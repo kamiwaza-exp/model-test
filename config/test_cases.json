@@ -1,0 +1,242 @@
+[
+  {
+    "name": "zero_greeting",
+    "prompt": "Hello, how are you today?",
+    "expected_tools": []
+  },
+  {
+    "name": "zero_weather_question",
+    "prompt": "What's the weather like today?",
+    "expected_tools": []
+  },
+  {
+    "name": "zero_general_question",
+    "prompt": "Can you tell me about artificial intelligence?",
+    "expected_tools": []
+  },
+  {
+    "name": "zero_thank_you",
+    "prompt": "Thank you for your help!",
+    "expected_tools": []
+  },
+  {
+    "name": "zero_capabilities",
+    "prompt": "What can you help me with?",
+    "expected_tools": []
+  },
+  {
+    "name": "simple_search_electronics",
+    "prompt": "Search for electronics",
+    "expected_tools": [
+      {
+        "name": "search_products",
+        "arguments": {
+          "category": "electronics"
+        }
+      }
+    ]
+  },
+  {
+    "name": "simple_add_iphone",
+    "prompt": "Add iPhone to cart",
+    "expected_tools": [
+      {
+        "name": "add_to_cart",
+        "arguments": {
+          "product_name": "iPhone"
+        }
+      }
+    ]
+  },
+  {
+    "name": "simple_view_cart",
+    "prompt": "Show me my cart",
+    "expected_tools": [
+      {
+        "name": "view_cart",
+        "arguments": {}
+      }
+    ]
+  },
+  {
+    "name": "simple_remove_product",
+    "prompt": "Remove Samsung from my cart",
+    "expected_tools": [
+      {
+        "name": "remove_from_cart",
+        "arguments": {
+          "product_name": "Samsung"
+        }
+      }
+    ]
+  },
+  {
+    "name": "simple_checkout",
+    "prompt": "Proceed to checkout",
+    "expected_tools": [
+      {
+        "name": "checkout",
+        "arguments": {}
+      }
+    ]
+  },
+  {
+    "name": "medium_search_and_add",
+    "prompt": "Find wireless headphones and add them to my cart",
+    "expected_tools": [
+      {
+        "name": "search_products",
+        "arguments": {
+          "query": "wireless headphones"
+        }
+      },
+      {
+        "name": "add_to_cart",
+        "arguments": {
+          "product_name": "wireless headphones"
+        }
+      }
+    ]
+  },
+  {
+    "name": "medium_search_category_and_add",
+    "prompt": "Search for books and add Programming Book to cart with quantity 2",
+    "expected_tools": [
+      {
+        "name": "search_products",
+        "arguments": {
+          "category": "books"
+        }
+      },
+      {
+        "name": "add_to_cart",
+        "arguments": {
+          "product_name": "Programming Book",
+          "quantity": 2
+        }
+      }
+    ]
+  },
+  {
+    "name": "medium_remove_and_add",
+    "prompt": "Remove iPhone from cart and add Samsung Galaxy instead",
+    "expected_tools": [
+      {
+        "name": "remove_from_cart",
+        "arguments": {
+          "product_name": "iPhone"
+        }
+      },
+      {
+        "name": "add_to_cart",
+        "arguments": {
+          "product_name": "Samsung Galaxy"
+        }
+      }
+    ]
+  },
+  {
+    "name": "medium_view_and_add",
+    "prompt": "Show my cart and then add 5 more iPhones",
+    "expected_tools": [
+      {
+        "name": "view_cart",
+        "arguments": {}
+      },
+      {
+        "name": "add_to_cart",
+        "arguments": {
+          "product_name": "iPhone",
+          "quantity": 5
+        }
+      }
+    ]
+  },
+  {
+    "name": "complex_shopping_workflow",
+    "prompt": "I want to buy tech gadgets for my home office. Search for electronics, add a few items to cart, check what's in my cart, and then proceed to checkout.",
+    "expected_tools": [
+      {
+        "name": "search_products",
+        "arguments": {
+          "category": "electronics"
+        }
+      },
+      {
+        "name": "add_to_cart",
+        "arguments": {
+          "product_name": "iPhone 15"
+        }
+      },
+      {
+        "name": "view_cart",
+        "arguments": {}
+      },
+      {
+        "name": "checkout",
+        "arguments": {}
+      }
+    ]
+  },
+  {
+    "name": "complex_cart_management",
+    "prompt": "Help me organize my shopping cart. First show me what's currently in it, then remove any duplicate items, and add one Samsung Galaxy S24.",
+    "expected_tools": [
+      {
+        "name": "view_cart",
+        "arguments": {}
+      },
+      {
+        "name": "remove_from_cart",
+        "arguments": {
+          "product_name": "iPhone"
+        }
+      },
+      {
+        "name": "add_to_cart",
+        "arguments": {
+          "product_name": "Samsung Galaxy S24",
+          "quantity": 1
+        }
+      }
+    ]
+  },
+  {
+    "name": "complex_gift_shopping",
+    "prompt": "I need to buy gifts for my tech-savvy friend. Search for electronics, find something good, add it to cart, then also look for books and add a programming book. Show me the total and checkout.",
+    "expected_tools": [
+      {
+        "name": "search_products",
+        "arguments": {
+          "category": "electronics"
+        }
+      },
+      {
+        "name": "add_to_cart",
+        "arguments": {
+          "product_name": "Wireless Headphones"
+        }
+      },
+      {
+        "name": "search_products",
+        "arguments": {
+          "category": "books"
+        }
+      },
+      {
+        "name": "add_to_cart",
+        "arguments": {
+          "product_name": "Programming Book"
+        }
+      },
+      {
+        "name": "view_cart",
+        "arguments": {}
+      },
+      {
+        "name": "checkout",
+        "arguments": {}
+      }
+    ]
+  }
+]

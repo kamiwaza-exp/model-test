@@ -18,7 +18,7 @@ func main() {
 	// Command line flags
 	var (
 		apiKey     = flag.String("api-key", "DMR", "OpenAI API key (or set OPENAI_API_KEY env var)")
-		baseURL    = flag.String("base-url", "http://localhost:13434/engines/v1", "OpenAI API base URL (or set OPENAI_BASE_URL env var)")
+		baseURL    = flag.String("base-url", "http://localhost:12434/engines/v1", "OpenAI API base URL (or set OPENAI_BASE_URL env var)")
 		model      = flag.String("model", "", "Model to use (or set OPENAI_MODEL env var, defaults to gpt-4o-mini)")
 		configFile = flag.String("config", "config/test_cases.json", "Path to test cases configuration file")
 		testCase   = flag.String("test-case", "", "Run only the specified test case by name")

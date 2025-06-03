@@ -56,12 +56,8 @@ func (s *OpenAIService) ExecuteTest(ctx context.Context, execution models.TestEx
 		//Append first message as system message
 		params.Messages = append([]openai.ChatCompletionMessageParamUnion{openai.SystemMessage(execution.Config.SystemPrompt)}, params.Messages...)
 	}
-	if execution.Config.Temperature != nil {
-		params.Temperature = param.NewOpt(float64(*execution.Config.Temperature))
-	}
-	if execution.Config.MaxTokens != nil {
-		params.MaxTokens = param.NewOpt(int64(*execution.Config.MaxTokens))
-	}
+	params.Temperature = param.NewOpt(float64(execution.Config.Temperature))
+	params.MaxTokens = param.NewOpt(int64(execution.Config.MaxTokens))
 
 	// Create request object for logging
 	request := &models.APIRequest{

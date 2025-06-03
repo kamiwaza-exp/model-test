@@ -17,12 +17,11 @@ import (
 func main() {
 	// Command line flags
 	var (
-		apiKey       = flag.String("api-key", "", "OpenAI API key (or set OPENAI_API_KEY env var)")
-		baseURL      = flag.String("base-url", "", "OpenAI API base URL (or set OPENAI_BASE_URL env var)")
-		modelsFlag   = flag.String("models", "ai/llama3.2", "Comma-separated list of models to test")
-		configFile   = flag.String("config", "config/test_cases.json", "Path to test cases configuration file")
-		temperatures = flag.String("temperatures", "0.8", "Comma-separated list of temperature values")
-		testCase     = flag.String("test-case", "", "Run only the specified test case by name")
+		apiKey     = flag.String("api-key", "", "OpenAI API key (or set OPENAI_API_KEY env var)")
+		baseURL    = flag.String("base-url", "", "OpenAI API base URL (or set OPENAI_BASE_URL env var)")
+		modelsFlag = flag.String("models", "ai/llama3.2", "Comma-separated list of models to test")
+		configFile = flag.String("config", "config/test_cases.json", "Path to test cases configuration file")
+		testCase   = flag.String("test-case", "", "Run only the specified test case by name")
 	)
 	flag.Parse()
 
@@ -48,27 +47,15 @@ func main() {
 		modelNames[i] = strings.TrimSpace(model)
 	}
 
-	// Parse temperatures
-	tempStrings := strings.Split(*temperatures, ",")
-	var tempValues []float32
-	for _, tempStr := range tempStrings {
-		tempStr = strings.TrimSpace(tempStr)
-		var temp float64
-		if _, err := fmt.Sscanf(tempStr, "%f", &temp); err != nil {
-			log.Fatalf("Invalid temperature value: %s", tempStr)
-		}
-		tempValues = append(tempValues, float32(temp))
-	}
-
 	// Create configurations
 	var configs []models.TestConfig
-	for _, temp := range tempValues {
-		config := models.TestConfig{
-			Temperature:  &temp,
-			SystemPrompt: "You are a helpful shopping assistant for chat2cart, an AI-powered shopping platform. Your role is to help users discover products, manage their shopping cart, and complete purchases through natural conversation.\n\nKey capabilities:\n- Search for products by name, description, or category\n- Add products to the shopping cart\n- Remove products from the cart\n- Update quantities in the cart\n- Show cart contents and totals\n- Process checkout\n\nGuidelines:\n- Be friendly, helpful, and conversational\n- Ask clarifying questions when needed (e.g., quantity, specific product details)\n- Provide product recommendations when appropriate\n- Always confirm actions like adding/removing items\n- Help users understand their cart contents and totals\n- Guide users through the checkout process\n\nAvailable product categories: electronics, clothing, books, home, sports\n\nWhen users ask about products, use the search_products tool to find relevant items. When they want to add items to their cart, use the appropriate cart management tools.",
-		}
-		configs = append(configs, config)
+	config := models.TestConfig{
+		Temperature:  0.0,
+		TopK:         0,
+		MaxTokens:    1000,
+		SystemPrompt: "You are a helpful shopping assistant for chat2cart, an AI-powered shopping platform. Your role is to help users discover products, manage their shopping cart, and complete purchases through natural conversation.\n\nKey capabilities:\n- Search for products by name, description, or category\n- Add products to the shopping cart\n- Remove products from the cart\n- Update quantities in the cart\n- Show cart contents and totals\n- Process checkout\n\nGuidelines:\n- Be friendly, helpful, and conversational\n- Ask clarifying questions when needed (e.g., quantity, specific product details)\n- Provide product recommendations when appropriate\n- Always confirm actions like adding/removing items\n- Help users understand their cart contents and totals\n- Guide users through the checkout process\n\nAvailable product categories: electronics, clothing, books, home, sports\n\nWhen users ask about products, use the search_products tool to find relevant items. When they want to add items to their cart, use the appropriate cart management tools.",
 	}
+	configs = append(configs, config)
 
 	// Load test cases
 	testCases, err := loadTestCases(*configFile, *testCase)
@@ -91,7 +78,6 @@ func main() {
 	fmt.Printf("🚀 Starting OpenAI Model Tool Efficiency Test\n")
 	fmt.Printf("📊 Configuration:\n")
 	fmt.Printf("   Models: %v\n", modelNames)
-	fmt.Printf("   Temperatures: %v\n", tempValues)
 
 	if *baseURL != "" {
 		fmt.Printf("   Base URL: %s\n", *baseURL)
@@ -104,6 +90,10 @@ func main() {
 	fmt.Printf("   Test Cases: %d\n", len(testCases))
 	fmt.Printf("   Total Tests: %d\n", len(testCases)*len(modelNames)*len(configs))
 	fmt.Printf("   Output: %s\n", outputFile)
+	fmt.Printf("   System Prompt: %s\n", config.SystemPrompt)
+	fmt.Printf("   Temperature: %v\n", config.Temperature)
+	fmt.Printf("   TopK: %v\n", config.TopK)
+	fmt.Printf("   Max Tokens: %v\n", config.MaxTokens)
 	fmt.Println()
 
 	// Run tests

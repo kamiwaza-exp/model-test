@@ -24,10 +24,10 @@ type ExpectedToolCall struct {
 
 // TestConfig holds configuration parameters for the test
 type TestConfig struct {
-	SystemPrompt string   `json:"system_prompt,omitempty"`
-	Temperature  *float32 `json:"temperature,omitempty"`
-	TopK         *int     `json:"top_k,omitempty"`
-	MaxTokens    *int     `json:"max_tokens,omitempty"`
+	SystemPrompt string  `json:"system_prompt,omitempty"`
+	Temperature  float32 `json:"temperature,omitempty"`
+	TopK         int     `json:"top_k,omitempty"`
+	MaxTokens    int     `json:"max_tokens,omitempty"`
 }
 
 // TestExecution represents a single test execution

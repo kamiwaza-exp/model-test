@@ -27,13 +27,6 @@ make help                                   # Show all available commands
 make list-tests                            # List available test cases
 ```
 
-## Default Configuration
-
-- **API Key**: `DMR` (fake key for local models)
-- **Base URL**: `http://localhost:12434/engines/v1`
-- **Model**: `ai/llama3.2` (override with `MODELS=`)
-- **Temperature**: `0.8`
-
 ## Advanced Usage
 
 ```bash

@@ -10,6 +10,7 @@ type TestResult struct {
 	Metrics       TestMetrics      `json:"metrics"`
 	ActualTools   []ActualToolCall `json:"actual_tools"`
 	Success       bool             `json:"success"`
+	MatchedPath   string           `json:"matched_path,omitempty"` // Which path variant was matched (if any)
 	ErrorMessage  string           `json:"error_message,omitempty"`
 	Timestamp     time.Time        `json:"timestamp"`
 	Request       *APIRequest      `json:"request,omitempty"`

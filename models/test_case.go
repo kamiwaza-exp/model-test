@@ -4,9 +4,16 @@ import "github.com/openai/openai-go"
 
 // TestCase represents a single test scenario
 type TestCase struct {
-	Name          string             `json:"name"`
-	Prompt        string             `json:"prompt"`
-	ExpectedTools []ExpectedToolCall `json:"expected_tools"`
+	Name                 string             `json:"name"`
+	Prompt               string             `json:"prompt"`
+	ExpectedToolVariants []ExpectedToolPath `json:"expected_tools_variants"` // Multi-path format
+}
+
+// ExpectedToolPath represents one valid execution path
+type ExpectedToolPath struct {
+	Name        string             `json:"name"`
+	Description string             `json:"description,omitempty"`
+	Tools       []ExpectedToolCall `json:"tools"`
 }
 
 // ExpectedToolCall represents the expected function call

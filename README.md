@@ -6,7 +6,7 @@ A Go application for testing AI models with function calling using local AI serv
 
 ```bash
 # Clone and setup
-git clone <repo-url>
+git clone https://github.com/ilopezluna/model-test
 cd model-test
 go mod download
 
@@ -32,7 +32,7 @@ make list-tests                            # List available test cases
 - **API Key**: `DMR` (fake key for local models)
 - **Base URL**: `http://localhost:12434/engines/v1`
 - **Model**: `ai/llama3.2` (override with `MODELS=`)
-- **Temperature**: `0.0`
+- **Temperature**: `0.8`
 
 ## Advanced Usage
 
@@ -41,7 +41,7 @@ make list-tests                            # List available test cases
 go run main.go -models="gpt-4" -base-url="https://api.openai.com/v1" -api-key="real-key"
 
 # Run specific test case
-go run main.go -test-case="simple_add_iphone" -verbose
+go run main.go -test-case="simple_add_iphone"
 ```
 
 ## Requirements

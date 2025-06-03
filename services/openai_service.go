@@ -95,7 +95,10 @@ func (s *OpenAIService) ExecuteTest(ctx context.Context, execution models.TestEx
 	actualTools := s.extractToolCalls(response)
 
 	// Calculate metrics
-	metrics := s.calculateMetrics(execution.TestCase.ExpectedTools, actualTools, response, responseTime)
+	metrics := s.calculateMetrics(execution.TestCase, actualTools, response, responseTime)
+
+	// Check success and get matched path
+	success, matchedPath := s.isTestSuccessfulWithPath(execution.TestCase, actualTools)
 
 	// Create response object for logging
 	apiResponse := &models.APIResponse{
@@ -108,7 +111,8 @@ func (s *OpenAIService) ExecuteTest(ctx context.Context, execution models.TestEx
 		TestExecution: execution,
 		Metrics:       metrics,
 		ActualTools:   actualTools,
-		Success:       s.isTestSuccessful(execution.TestCase.ExpectedTools, actualTools),
+		Success:       success,
+		MatchedPath:   matchedPath,
 		Timestamp:     time.Now(),
 		Request:       request,
 		Response:      apiResponse,
@@ -155,7 +159,12 @@ func (s *OpenAIService) extractToolCalls(response *openai.ChatCompletion) []mode
 }
 
 // calculateMetrics computes efficiency metrics for the test
-func (s *OpenAIService) calculateMetrics(expected []models.ExpectedToolCall, actual []models.ActualToolCall, response *openai.ChatCompletion, responseTime time.Duration) models.TestMetrics {
+func (s *OpenAIService) calculateMetrics(testCase models.TestCase, actual []models.ActualToolCall, response *openai.ChatCompletion, responseTime time.Duration) models.TestMetrics {
+	// Get expected tools from the first variant as baseline
+	var expected []models.ExpectedToolCall
+	if len(testCase.ExpectedToolVariants) > 0 {
+		expected = testCase.ExpectedToolVariants[0].Tools
+	}
 	metrics := models.TestMetrics{
 		ResponseTime:       responseTime,
 		TotalExpectedCalls: len(expected),
@@ -271,29 +280,45 @@ func (s *OpenAIService) calculateArgumentAccuracy(expected []models.ExpectedTool
 	return float64(correctArguments) / float64(totalArguments)
 }
 
-// isTestSuccessful checks if the actual tool calls exactly match the expected tool calls
-func (s *OpenAIService) isTestSuccessful(expected []models.ExpectedToolCall, actual []models.ActualToolCall) bool {
+// isTestSuccessful checks if the actual tool calls match any of the expected paths
+func (s *OpenAIService) isTestSuccessful(testCase models.TestCase, actual []models.ActualToolCall) bool {
+	success, _ := s.isTestSuccessfulWithPath(testCase, actual)
+	return success
+}
+
+// isTestSuccessfulWithPath checks if the actual tool calls match any of the expected paths and returns which path matched
+func (s *OpenAIService) isTestSuccessfulWithPath(testCase models.TestCase, actual []models.ActualToolCall) (bool, string) {
+	// Check all variants to find a match
+	if len(testCase.ExpectedToolVariants) > 0 {
+		for _, variant := range testCase.ExpectedToolVariants {
+			if s.isPathSuccessful(variant.Tools, actual) {
+				return true, variant.Name
+			}
+		}
+		return false, ""
+	}
+
+	// No expected tools defined - success if no actual tools called
+	if len(actual) == 0 {
+		return true, "no_tools_expected"
+	}
+	return false, ""
+}
+
+// isPathSuccessful checks if actual tool calls match a specific expected path
+func (s *OpenAIService) isPathSuccessful(expected []models.ExpectedToolCall, actual []models.ActualToolCall) bool {
 	// First check: exact count match
 	if len(actual) != len(expected) {
 		return false
 	}
 
-	// Second check: all expected tools must be called correctly
-	for _, expectedTool := range expected {
-		found := false
-		for _, actualTool := range actual {
-			if s.isToolCallCorrect(expectedTool, actualTool) {
-				found = true
-				break
-			}
-		}
-		if !found {
+	// Second check: all expected tools must be called correctly in order
+	for i, expectedTool := range expected {
+		if i >= len(actual) || !s.isToolCallCorrect(expectedTool, actual[i]) {
 			return false
 		}
 	}
 
-	// Third check: no extra or duplicate tools (already covered by count check)
-	// All checks passed
 	return true
 }
 

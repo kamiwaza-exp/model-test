@@ -62,7 +62,7 @@ func (ai *OpenAIService) ProcessChatMessage(ctx context.Context, userMessage str
 	}
 
 	// Define the tools available to the AI
-	tools := ai.getToolDefinitions()
+	t := ai.getToolDefinitions()
 
 	// Build messages including conversation history
 	messages := ai.buildMessagesFromSession(session, userMessage)
@@ -87,7 +87,7 @@ func (ai *OpenAIService) ProcessChatMessage(ctx context.Context, userMessage str
 		completion, err := ai.client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
 			Model:       ai.defaultModel,
 			Messages:    messages,
-			Tools:       tools,
+			Tools:       t,
 			Temperature: param.Opt[float64]{Value: 0},
 		})
 

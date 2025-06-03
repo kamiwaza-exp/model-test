@@ -2,6 +2,8 @@ package services
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -14,14 +16,17 @@ import (
 	"github.com/openai/openai-go/packages/param"
 )
 
-// OpenAIService handles interactions with the OpenAI API
+// OpenAIService handles interactions with the OpenAI API using an agent loop
 type OpenAIService struct {
 	client        openai.Client
 	shoppingTools *tools.ShoppingTools
+	toolExecutor  *ToolExecutor
+	cartService   *CartService
+	defaultModel  string
 }
 
 // NewOpenAIService creates a new OpenAI service instance
-func NewOpenAIService(apiKey, baseURL string) *OpenAIService {
+func NewOpenAIService(apiKey, baseURL, defaultModel string) *OpenAIService {
 	options := []option.RequestOption{
 		option.WithBaseURL(baseURL),
 		option.WithAPIKey(apiKey),
@@ -29,299 +34,174 @@ func NewOpenAIService(apiKey, baseURL string) *OpenAIService {
 
 	client := openai.NewClient(options...)
 
+	// Initialize services
+	productService := NewProductService()
+	cartService := NewCartService()
+	toolExecutor := NewToolExecutor(productService, cartService)
+
+	// Set default model if not provided
+	if defaultModel == "" {
+		defaultModel = "gpt-4o-mini"
+	}
+
 	return &OpenAIService{
 		client:        client,
 		shoppingTools: tools.NewShoppingTools(),
+		toolExecutor:  toolExecutor,
+		cartService:   cartService,
+		defaultModel:  defaultModel,
 	}
 }
 
-// ExecuteTest runs a single test case and returns the result
-func (s *OpenAIService) ExecuteTest(ctx context.Context, execution models.TestExecution) (*models.TestResult, error) {
-	startTime := time.Now()
-
-	// Prepare the chat completion request
-	messages := []openai.ChatCompletionMessageParamUnion{
-		openai.UserMessage(execution.TestCase.Prompt),
+// ProcessChatMessage processes a chat message and returns a response using an agent loop
+func (ai *OpenAIService) ProcessChatMessage(ctx context.Context, userMessage string, session *models.ChatSession) (*models.ChatResponse, error) {
+	// Generate session ID if not provided
+	sessionID := session.SessionID
+	if sessionID == "" {
+		sessionID = ai.generateSessionID()
 	}
 
-	// Build request parameters
-	params := openai.ChatCompletionNewParams{
-		Model:    execution.ModelName,
-		Messages: messages,
-		Tools:    s.shoppingTools.GetToolDefinitions(),
+	// Define the tools available to the AI
+	tools := ai.getToolDefinitions()
+
+	// Build messages including conversation history
+	messages := ai.buildMessagesFromSession(session, userMessage)
+
+	var cartSummary *models.CartSummary
+	var toolResults []models.ToolCallResult
+	var responseMessage string
+
+	// Maximum number of tool call iterations
+	maxIterations := 5
+	currentIteration := 0
+
+	for currentIteration < maxIterations {
+		// Create the chat completion request
+		completion, err := ai.client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
+			Model:       ai.defaultModel,
+			Messages:    messages,
+			Tools:       tools,
+			Temperature: param.Opt[float64]{Value: 0},
+		})
+
+		if err != nil {
+			return nil, fmt.Errorf("failed to get AI response: %w", err)
+		}
+
+		// Process the response
+		choice := completion.Choices[0]
+		responseMessage = choice.Message.Content
+
+		// If no tool calls, we're done
+		if len(choice.Message.ToolCalls) == 0 {
+			break
+		}
+
+		// Add the model's function call message to the conversation
+		messages = append(messages, choice.Message.ToParam())
+
+		// Execute tool calls
+		iterationResults, err := ai.toolExecutor.ExecuteToolCalls(ctx, choice.Message.ToolCalls, sessionID)
+		if err != nil {
+			// Log error but don't stop the loop
+			fmt.Printf("Error executing tool calls: %v\n", err)
+		}
+
+		// Add results to our collection
+		toolResults = append(toolResults, iterationResults...)
+
+		// Add tool results to the conversation as function call outputs
+		for _, result := range iterationResults {
+			// Convert the result to JSON string
+			resultJSON, err := json.Marshal(result.Result)
+			if err != nil {
+				fmt.Printf("Error marshaling tool result: %v\n", err)
+				continue
+			}
+
+			// Add the function call output message
+			messages = append(messages, openai.ToolMessage(string(resultJSON), result.CallID))
+		}
+
+		currentIteration++
 	}
 
-	// Apply configuration
-	if execution.Config.SystemPrompt != "" {
-		//Append first message as system message
-		params.Messages = append([]openai.ChatCompletionMessageParamUnion{openai.SystemMessage(execution.Config.SystemPrompt)}, params.Messages...)
-	}
-	params.Temperature = param.NewOpt(float64(execution.Config.Temperature))
-	params.MaxTokens = param.NewOpt(int64(execution.Config.MaxTokens))
-
-	// Create request object for logging
-	request := &models.APIRequest{
-		Method: "POST",
-		URL:    "/v1/chat/completions",
-		Body:   params,
+	// If we hit the maximum iterations, add a warning message
+	if currentIteration >= maxIterations {
+		responseMessage = "I've reached the maximum number of operations I can perform. Let me know if you need anything else!"
 	}
 
-	// Make the API call
-	response, err := s.client.Chat.Completions.New(ctx, params)
-	if err != nil {
-		return &models.TestResult{
-			TestExecution: execution,
-			Success:       false,
-			ErrorMessage:  err.Error(),
-			Timestamp:     time.Now(),
-			Request:       request,
-			Response: &models.APIResponse{
-				StatusCode: 0,
-				Duration:   time.Since(startTime),
-			},
-			Metrics: models.TestMetrics{
-				ResponseTime: time.Since(startTime),
-			},
-		}, nil
-	}
+	// Get the final cart summary after all tool executions
+	cartSummary = ai.cartService.GetCartSummary(sessionID)
 
-	responseTime := time.Since(startTime)
-
-	// Extract tool calls from response
-	actualTools := s.extractToolCalls(response)
-
-	// Calculate metrics
-	metrics := s.calculateMetrics(execution.TestCase, actualTools, response, responseTime)
-
-	// Check success and get matched path
-	success, matchedPath := s.isTestSuccessfulWithPath(execution.TestCase, actualTools)
-
-	// Create response object for logging
-	apiResponse := &models.APIResponse{
-		StatusCode: 200, // Assuming success if no error
-		Body:       response,
-		Duration:   responseTime,
-	}
-
-	return &models.TestResult{
-		TestExecution: execution,
-		Metrics:       metrics,
-		ActualTools:   actualTools,
-		Success:       success,
-		MatchedPath:   matchedPath,
-		Timestamp:     time.Now(),
-		Request:       request,
-		Response:      apiResponse,
+	return &models.ChatResponse{
+		Message:     responseMessage,
+		SessionID:   sessionID,
+		CartSummary: cartSummary,
+		Timestamp:   time.Now(),
+		ToolCalls:   toolResults,
 	}, nil
 }
 
-// extractToolCalls extracts tool calls from the OpenAI response
-func (s *OpenAIService) extractToolCalls(response *openai.ChatCompletion) []models.ActualToolCall {
-	var actualTools []models.ActualToolCall
-
-	if len(response.Choices) == 0 {
-		return actualTools
+// buildMessagesFromSession converts chat session messages to OpenAI format
+func (ai *OpenAIService) buildMessagesFromSession(session *models.ChatSession, userMessage string) []openai.ChatCompletionMessageParamUnion {
+	messages := []openai.ChatCompletionMessageParamUnion{
+		openai.SystemMessage(ai.getSystemPrompt()),
 	}
 
-	choice := response.Choices[0]
-	if choice.Message.ToolCalls == nil {
-		return actualTools
-	}
-
-	for _, toolCall := range choice.Message.ToolCalls {
-		if toolCall.Function.Name == "" {
-			continue
-		}
-
-		// Parse function arguments
-		var args map[string]interface{}
-		if toolCall.Function.Arguments != "" {
-			if err := json.Unmarshal([]byte(toolCall.Function.Arguments), &args); err != nil {
-				// If parsing fails, store the raw string
-				args = map[string]interface{}{
-					"_raw_arguments": toolCall.Function.Arguments,
-					"_parse_error":   err.Error(),
-				}
-			}
-		}
-
-		actualTools = append(actualTools, models.ActualToolCall{
-			Name:      toolCall.Function.Name,
-			Arguments: args,
-		})
-	}
-
-	return actualTools
-}
-
-// calculateMetrics computes efficiency metrics for the test
-func (s *OpenAIService) calculateMetrics(testCase models.TestCase, actual []models.ActualToolCall, response *openai.ChatCompletion, responseTime time.Duration) models.TestMetrics {
-	// Get expected tools from the first variant as baseline
-	var expected []models.ExpectedToolCall
-	if len(testCase.ExpectedToolVariants) > 0 {
-		expected = testCase.ExpectedToolVariants[0].Tools
-	}
-	metrics := models.TestMetrics{
-		ResponseTime:       responseTime,
-		TotalExpectedCalls: len(expected),
-		TotalActualCalls:   len(actual),
-	}
-
-	// Extract token usage
-	if response.Usage.PromptTokens > 0 {
-		metrics.InputTokens = int(response.Usage.PromptTokens)
-		metrics.OutputTokens = int(response.Usage.CompletionTokens)
-		metrics.TotalTokens = int(response.Usage.TotalTokens)
-	}
-
-	// Calculate tool call accuracy
-	correctCalls := 0
-	for _, expectedTool := range expected {
-		for _, actualTool := range actual {
-			if s.isToolCallCorrect(expectedTool, actualTool) {
-				correctCalls++
-				break
+	// Add previous messages from the session (if any)
+	if session != nil {
+		for _, msg := range session.Messages {
+			switch models.ChatRole(msg.Role) {
+			case models.RoleUser:
+				messages = append(messages, openai.UserMessage(msg.Content))
+			case models.RoleAssistant:
+				messages = append(messages, openai.AssistantMessage(msg.Content))
+			case models.RoleSystem:
+				// Skip system messages as we already have one
+				continue
 			}
 		}
 	}
 
-	metrics.CorrectToolCalls = correctCalls
+	// Add the current user message
+	messages = append(messages, openai.UserMessage(userMessage))
 
-	if len(expected) > 0 {
-		metrics.ToolCallAccuracy = float64(correctCalls) / float64(len(expected))
-	} else {
-		// If no tools expected and none called, that's 100% accuracy
-		if len(actual) == 0 {
-			metrics.ToolCallAccuracy = 1.0
-		} else {
-			metrics.ToolCallAccuracy = 0.0
-		}
-	}
-
-	// Calculate argument accuracy
-	metrics.ArgumentAccuracy = s.calculateArgumentAccuracy(expected, actual)
-
-	// Calculate completion rate (did we get the expected number of tool calls?)
-	if len(expected) > 0 {
-		metrics.CompletionRate = float64(min(len(actual), len(expected))) / float64(len(expected))
-	} else {
-		metrics.CompletionRate = 1.0
-	}
-
-	return metrics
+	return messages
 }
 
-// isToolCallCorrect checks if an actual tool call matches an expected one
-func (s *OpenAIService) isToolCallCorrect(expected models.ExpectedToolCall, actual models.ActualToolCall) bool {
-	if expected.Name != actual.Name {
-		return false
-	}
+// getSystemPrompt returns the system prompt for the shopping assistant
+func (ai *OpenAIService) getSystemPrompt() string {
+	return `You are a helpful shopping assistant. You can help users search for products, manage their shopping cart, and complete purchases.
 
-	// Check if all expected arguments are present and correct
-	for key, expectedValue := range expected.Arguments {
-		actualValue, exists := actual.Arguments[key]
-		if !exists {
-			return false
-		}
+Available tools:
+- search_products: Search for products by query, category, or both
+- add_to_cart: Add products to the shopping cart
+- remove_from_cart: Remove products from the shopping cart  
+- view_cart: View current cart contents and totals
+- checkout: Process checkout for the current cart
 
-		// Simple equality check (could be enhanced for more complex comparisons)
-		if fmt.Sprintf("%v", expectedValue) != fmt.Sprintf("%v", actualValue) {
-			return false
-		}
-	}
-
-	return true
+Always be helpful and provide clear information about products and cart operations.
+If the user asks anything else, politely decline and say you are a shopping assistant.
+`
 }
 
-// calculateArgumentAccuracy calculates the accuracy of function arguments
-func (s *OpenAIService) calculateArgumentAccuracy(expected []models.ExpectedToolCall, actual []models.ActualToolCall) float64 {
-	if len(expected) == 0 {
-		return 1.0
-	}
-
-	totalArguments := 0
-	correctArguments := 0
-
-	for _, expectedTool := range expected {
-		// Find matching actual tool call
-		var matchingActual *models.ActualToolCall
-		for _, actualTool := range actual {
-			if actualTool.Name == expectedTool.Name {
-				matchingActual = &actualTool
-				break
-			}
-		}
-
-		if matchingActual == nil {
-			// Tool not called at all, all arguments are wrong
-			totalArguments += len(expectedTool.Arguments)
-			continue
-		}
-
-		// Check each expected argument
-		for key, expectedValue := range expectedTool.Arguments {
-			totalArguments++
-			if actualValue, exists := matchingActual.Arguments[key]; exists {
-				if fmt.Sprintf("%v", expectedValue) == fmt.Sprintf("%v", actualValue) {
-					correctArguments++
-				}
-			}
-		}
-	}
-
-	if totalArguments == 0 {
-		return 1.0
-	}
-
-	return float64(correctArguments) / float64(totalArguments)
+// getToolDefinitions returns the tool definitions for OpenAI function calling
+func (ai *OpenAIService) getToolDefinitions() []openai.ChatCompletionToolParam {
+	return ai.shoppingTools.GetToolDefinitions()
 }
 
-// isTestSuccessful checks if the actual tool calls match any of the expected paths
-func (s *OpenAIService) isTestSuccessful(testCase models.TestCase, actual []models.ActualToolCall) bool {
-	success, _ := s.isTestSuccessfulWithPath(testCase, actual)
-	return success
+// InitializeCartForTest initializes the cart with predefined state for testing
+func (ai *OpenAIService) InitializeCartForTest(sessionID string, initialState *models.InitialCartState) error {
+	return ai.cartService.InitializeCartState(sessionID, initialState)
 }
 
-// isTestSuccessfulWithPath checks if the actual tool calls match any of the expected paths and returns which path matched
-func (s *OpenAIService) isTestSuccessfulWithPath(testCase models.TestCase, actual []models.ActualToolCall) (bool, string) {
-	// Check all variants to find a match
-	if len(testCase.ExpectedToolVariants) > 0 {
-		for _, variant := range testCase.ExpectedToolVariants {
-			if s.isPathSuccessful(variant.Tools, actual) {
-				return true, variant.Name
-			}
-		}
-		return false, ""
+// generateSessionID generates a random session ID
+func (ai *OpenAIService) generateSessionID() string {
+	bytes := make([]byte, 16)
+	if _, err := rand.Read(bytes); err != nil {
+		// Fallback to timestamp-based ID
+		return fmt.Sprintf("session_%d", time.Now().UnixNano())
 	}
-
-	// No expected tools defined - success if no actual tools called
-	if len(actual) == 0 {
-		return true, "no_tools_expected"
-	}
-	return false, ""
-}
-
-// isPathSuccessful checks if actual tool calls match a specific expected path
-func (s *OpenAIService) isPathSuccessful(expected []models.ExpectedToolCall, actual []models.ActualToolCall) bool {
-	// First check: exact count match
-	if len(actual) != len(expected) {
-		return false
-	}
-
-	// Second check: all expected tools must be called correctly in order
-	for i, expectedTool := range expected {
-		if i >= len(actual) || !s.isToolCallCorrect(expectedTool, actual[i]) {
-			return false
-		}
-	}
-
-	return true
-}
-
-// Helper function for min
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
+	return fmt.Sprintf("session_%s", hex.EncodeToString(bytes))
 }

@@ -274,10 +274,10 @@
   },
   {
     "name": "complex_shopping_workflow",
-    "prompt": "I want to buy tech gadgets for my home office. Search for electronics, add a few items to cart, check what's in my cart, and then proceed to checkout.",
+    "prompt": "I want to buy tech gadgets for my home office. Search for electronics, add a few items to cart, check what's in my cart, and then proceed to checkout without confirmation.",
     "expected_tools_variants": [
       {
-        "name": "full_workflow",
+        "name": "full_workflow_with_iphone",
         "description": "Complete shopping workflow",
         "tools": [
           {
@@ -301,12 +301,118 @@
             "arguments": {}
           }
         ]
+      },
+      {
+        "name": "full_workflow_with_headphones",
+        "description": "Complete shopping workflow",
+        "tools": [
+          {
+            "name": "search_products",
+            "arguments": {
+              "category": "electronics"
+            }
+          },
+          {
+            "name": "add_to_cart",
+            "arguments": {
+              "product_name": "Wireless Headphones"
+            }
+          },
+          {
+            "name": "view_cart",
+            "arguments": {}
+          },
+          {
+            "name": "checkout",
+            "arguments": {}
+          }
+        ]
+      },
+      {
+        "name": "full_workflow_with_headphones_and_iphone",
+        "description": "Complete shopping workflow",
+        "tools": [
+          {
+            "name": "search_products",
+            "arguments": {
+              "category": "electronics"
+            }
+          },
+          {
+            "name": "add_to_cart",
+            "arguments": {
+              "product_name": "Wireless Headphones"
+            }
+          },
+          {
+            "name": "add_to_cart",
+            "arguments": {
+              "product_name": "iPhone 15"
+            }
+          },
+          {
+            "name": "view_cart",
+            "arguments": {}
+          },
+          {
+            "name": "checkout",
+            "arguments": {}
+          }
+        ]
+      },
+      {
+        "name": "full_workflow_with_iphone_and_headphones",
+        "description": "Complete shopping workflow",
+        "tools": [
+          {
+            "name": "search_products",
+            "arguments": {
+              "category": "electronics"
+            }
+          },
+          {
+            "name": "add_to_cart",
+            "arguments": {
+              "product_name": "iPhone 15"
+            }
+          },
+          {
+            "name": "add_to_cart",
+            "arguments": {
+              "product_name": "Wireless Headphones"
+            }
+          },
+          {
+            "name": "view_cart",
+            "arguments": {}
+          },
+          {
+            "name": "checkout",
+            "arguments": {}
+          }
+        ]
       }
     ]
   },
   {
     "name": "complex_cart_management",
     "prompt": "Help me organize my shopping cart. First show me what's currently in it, then remove any duplicate items, and add one Samsung Galaxy S24.",
+    "initial_cart_state": {
+      "items": [
+        {
+          "product_name": "iPhone",
+          "quantity": 1
+        },
+        {
+          "product_name": "iPhone",
+          "quantity": 1
+        },
+        {
+          "product_name": "Wireless Headphones",
+          "quantity": 1
+        }
+      ]
+    },
     "expected_tools_variants": [
       {
         "name": "cart_organization",
@@ -335,7 +441,7 @@
   },
   {
     "name": "complex_gift_shopping",
-    "prompt": "I need to buy gifts for my tech-savvy friend. Search for electronics, find something good, add it to cart, then also look for books and add a programming book. Show me the total and checkout.",
+    "prompt": "I need to buy gifts for my tech-savvy friend. Search for electronics, find something good, add it to cart, then also look for books and add a programming book, then show me the total.",
     "expected_tools_variants": [
       {
         "name": "gift_shopping_workflow",
@@ -368,9 +474,39 @@
           {
             "name": "view_cart",
             "arguments": {}
+          }
+        ]
+      },
+      {
+        "name": "gift_shopping_workflow",
+        "description": "Multi-category shopping with checkout",
+        "tools": [
+          {
+            "name": "search_products",
+            "arguments": {
+              "category": "electronics"
+            }
           },
           {
-            "name": "checkout",
+            "name": "add_to_cart",
+            "arguments": {
+              "product_name": "iPhone 15"
+            }
+          },
+          {
+            "name": "search_products",
+            "arguments": {
+              "category": "books"
+            }
+          },
+          {
+            "name": "add_to_cart",
+            "arguments": {
+              "product_name": "Programming Book"
+            }
+          },
+          {
+            "name": "view_cart",
             "arguments": {}
           }
         ]

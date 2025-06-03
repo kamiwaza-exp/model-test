@@ -17,9 +17,9 @@ import (
 func main() {
 	// Command line flags
 	var (
-		apiKey     = flag.String("api-key", "", "OpenAI API key (or set OPENAI_API_KEY env var)")
-		baseURL    = flag.String("base-url", "", "OpenAI API base URL (or set OPENAI_BASE_URL env var)")
-		modelsFlag = flag.String("models", "ai/llama3.2", "Comma-separated list of models to test")
+		apiKey     = flag.String("api-key", "DMR", "OpenAI API key (or set OPENAI_API_KEY env var)")
+		baseURL    = flag.String("base-url", "http://localhost:13434", "OpenAI API base URL (or set OPENAI_BASE_URL env var)")
+		model      = flag.String("model", "", "Model to use (or set OPENAI_MODEL env var, defaults to gpt-4o-mini)")
 		configFile = flag.String("config", "config/test_cases.json", "Path to test cases configuration file")
 		testCase   = flag.String("test-case", "", "Run only the specified test case by name")
 	)
@@ -41,21 +41,11 @@ func main() {
 		*baseURL = "http://localhost:12434/engines/v1"
 	}
 
-	// Parse models
-	modelNames := strings.Split(*modelsFlag, ",")
-	for i, model := range modelNames {
-		modelNames[i] = strings.TrimSpace(model)
+	// Get model from flag or environment
+	if *model == "" {
+		*model = os.Getenv("OPENAI_MODEL")
 	}
-
-	// Create configurations
-	var configs []models.TestConfig
-	config := models.TestConfig{
-		Temperature:  0.0,
-		TopK:         0,
-		MaxTokens:    1000,
-		SystemPrompt: "You are a helpful shopping assistant for chat2cart, an AI-powered shopping platform. Your role is to help users discover products, manage their shopping cart, and complete purchases through natural conversation.\n\nKey capabilities:\n- Search for products by name, description, or category\n- Add products to the shopping cart\n- Remove products from the cart\n- Update quantities in the cart\n- Show cart contents and totals\n- Process checkout\n\nGuidelines:\n- Be friendly, helpful, and conversational\n- Ask clarifying questions when needed (e.g., quantity, specific product details)\n- Provide product recommendations when appropriate\n- Always confirm actions like adding/removing items\n- Help users understand their cart contents and totals\n- Guide users through the checkout process\n\nAvailable product categories: electronics, clothing, books, home, sports\n\nWhen users ask about products, use the search_products tool to find relevant items. When they want to add items to their cart, use the appropriate cart management tools.",
-	}
-	configs = append(configs, config)
+	// Default model will be set in the service if empty
 
 	// Load test cases
 	testCases, err := loadTestCases(*configFile, *testCase)
@@ -64,7 +54,7 @@ func main() {
 	}
 
 	timestamp := time.Now().Format("20060102_150405")
-	outputFile := fmt.Sprintf("results/test_results_%s.json", timestamp)
+	outputFile := fmt.Sprintf("results/agent_test_results_%s.json", timestamp)
 
 	// Ensure results directory exists
 	if err := os.MkdirAll("results", 0755); err != nil {
@@ -72,39 +62,33 @@ func main() {
 	}
 
 	// Create test runner
-	runner := services.NewTestRunner(*apiKey, *baseURL)
+	runner := services.NewTestRunner(*apiKey, *baseURL, *model)
 
 	// Print test configuration
-	fmt.Printf("🚀 Starting OpenAI Model Tool Efficiency Test\n")
+	fmt.Printf("🚀 Starting Agent Loop Tool Efficiency Test\n")
 	fmt.Printf("📊 Configuration:\n")
-	fmt.Printf("   Models: %v\n", modelNames)
-
-	if *baseURL != "" {
-		fmt.Printf("   Base URL: %s\n", *baseURL)
-	} else {
-		fmt.Printf("   Base URL: https://api.openai.com/v1 (default)\n")
+	fmt.Printf("   Base URL: %s\n", *baseURL)
+	modelName := *model
+	if modelName == "" {
+		modelName = "gpt-4o-mini (default)"
 	}
+	fmt.Printf("   Model: %s\n", modelName)
 	if *testCase != "" {
 		fmt.Printf("   Single Test Case: %s\n", *testCase)
 	}
 	fmt.Printf("   Test Cases: %d\n", len(testCases))
-	fmt.Printf("   Total Tests: %d\n", len(testCases)*len(modelNames)*len(configs))
 	fmt.Printf("   Output: %s\n", outputFile)
-	fmt.Printf("   System Prompt: %s\n", config.SystemPrompt)
-	fmt.Printf("   Temperature: %v\n", config.Temperature)
-	fmt.Printf("   TopK: %v\n", config.TopK)
-	fmt.Printf("   Max Tokens: %v\n", config.MaxTokens)
 	fmt.Println()
 
 	// Run tests
 	ctx := context.Background()
 
-	fmt.Println("🔄 Running tests...")
+	fmt.Println("🔄 Running agent tests...")
 	startTime := time.Now()
 
-	report, err := runner.RunTestSuite(ctx, testCases, modelNames, configs)
+	report, err := runner.RunAgentTestSuite(ctx, testCases)
 	if err != nil {
-		log.Fatalf("Failed to run test suite: %v", err)
+		log.Fatalf("Failed to run agent test suite: %v", err)
 	}
 
 	duration := time.Since(startTime)
@@ -116,7 +100,7 @@ func main() {
 	}
 
 	// Print summary
-	printSummary(report)
+	printAgentSummary(report)
 
 	fmt.Printf("\n💾 Results saved to: %s\n", outputFile)
 }
@@ -155,9 +139,9 @@ func loadTestCases(filename string, testCaseName string) ([]models.TestCase, err
 	return filteredTestCases, nil
 }
 
-// printSummary prints a summary of the test results
-func printSummary(report *models.Report) {
-	fmt.Println("📈 Test Results")
+// printAgentSummary prints a summary of the agent test results
+func printAgentSummary(report *models.AgentReport) {
+	fmt.Println("📈 Agent Test Results")
 	fmt.Println(strings.Repeat("=", 50))
 
 	// Print overall statistics
@@ -167,38 +151,41 @@ func printSummary(report *models.Report) {
 	fmt.Printf("⏱️  Average Response Time: %v\n", report.AverageTime)
 	fmt.Println()
 
-	// Group results by test case
-	testCaseResults := make(map[string][]models.TestResult)
-	for _, result := range report.Results {
-		testCaseResults[result.TestExecution.TestCase.Name] = append(testCaseResults[result.TestExecution.TestCase.Name], result)
-	}
-
 	// Print results by test case
 	fmt.Println("📋 Test Case Results:")
 	fmt.Println(strings.Repeat("-", 50))
-	for testCaseName, results := range testCaseResults {
-		passed := 0
-		failed := 0
-		var totalTime time.Duration
 
-		for _, result := range results {
-			if result.Success {
-				passed++
-			} else {
-				failed++
-			}
-			totalTime += result.Metrics.ResponseTime
+	for _, result := range report.Results {
+		status := "❌ FAILED"
+		if result.Success {
+			status = "✅ PASSED"
 		}
 
-		avgTime := totalTime / time.Duration(len(results))
-		successRate := float64(passed) / float64(len(results)) * 100
+		fmt.Printf("Test Case: %s\n", result.TestCase.Name)
+		fmt.Printf("  Status: %s\n", status)
+		if result.MatchedPath != "" {
+			fmt.Printf("  Matched Path: %s\n", result.MatchedPath)
+		}
+		fmt.Printf("  Response Time: %v\n", result.ResponseTime)
 
-		fmt.Printf("Test Case: %s\n", testCaseName)
-		fmt.Printf("  Total Runs: %d\n", len(results))
-		fmt.Printf("  ✅ Passed: %d\n", passed)
-		fmt.Printf("  ❌ Failed: %d\n", failed)
-		fmt.Printf("  ⏱️  Average Time: %v\n", avgTime)
-		fmt.Printf("  📊 Success Rate: %.2f%%\n", successRate)
+		if result.Response != nil {
+			fmt.Printf("  Tool Calls: %d\n", len(result.Response.ToolCalls))
+			if len(result.Response.ToolCalls) > 0 {
+				fmt.Printf("  Tools Used: ")
+				for i, toolCall := range result.Response.ToolCalls {
+					if i > 0 {
+						fmt.Printf(", ")
+					}
+					fmt.Printf("%s", toolCall.ToolName)
+				}
+				fmt.Println()
+			}
+		}
+
+		if result.ErrorMessage != "" {
+			fmt.Printf("  Error: %s\n", result.ErrorMessage)
+		}
+
 		fmt.Println(strings.Repeat("-", 30))
 	}
 
@@ -208,12 +195,23 @@ func printSummary(report *models.Report) {
 		fmt.Println(strings.Repeat("-", 50))
 		for _, result := range report.Results {
 			if !result.Success {
-				fmt.Printf("Test Case: %s\n", result.TestExecution.TestCase.Name)
-				fmt.Printf("Model: %s\n", result.TestExecution.ModelName)
+				fmt.Printf("Test Case: %s\n", result.TestCase.Name)
+				fmt.Printf("Expected Tool Variants: %d\n", len(result.TestCase.ExpectedToolVariants))
+				for i, variant := range result.TestCase.ExpectedToolVariants {
+					fmt.Printf("  Variant %d (%s): %d tools\n", i+1, variant.Name, len(variant.Tools))
+				}
+
+				if result.Response != nil {
+					fmt.Printf("Actual Tool Calls: %d\n", len(result.Response.ToolCalls))
+					for i, toolCall := range result.Response.ToolCalls {
+						fmt.Printf("  %d. %s\n", i+1, toolCall.ToolName)
+					}
+				}
+
 				if result.ErrorMessage != "" {
 					fmt.Printf("Error: %s\n", result.ErrorMessage)
 				}
-				fmt.Printf("Response Time: %v\n", result.Metrics.ResponseTime)
+				fmt.Printf("Response Time: %v\n", result.ResponseTime)
 				fmt.Println(strings.Repeat("-", 30))
 			}
 		}

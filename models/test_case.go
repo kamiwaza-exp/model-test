@@ -6,7 +6,19 @@ import "github.com/openai/openai-go"
 type TestCase struct {
 	Name                 string             `json:"name"`
 	Prompt               string             `json:"prompt"`
+	InitialCartState     *InitialCartState  `json:"initial_cart_state,omitempty"`
 	ExpectedToolVariants []ExpectedToolPath `json:"expected_tools_variants"` // Multi-path format
+}
+
+// InitialCartState represents the initial state of the cart for a test
+type InitialCartState struct {
+	Items []InitialCartItem `json:"items"`
+}
+
+// InitialCartItem represents an item in the initial cart state
+type InitialCartItem struct {
+	ProductName string `json:"product_name"`
+	Quantity    int    `json:"quantity"`
 }
 
 // ExpectedToolPath represents one valid execution path

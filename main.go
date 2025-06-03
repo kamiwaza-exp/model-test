@@ -53,8 +53,10 @@ func main() {
 		log.Fatalf("Failed to load test cases: %v", err)
 	}
 
+	// Generate output filename with model name
+	sanitizedModel := sanitizeModelName(*model)
 	timestamp := time.Now().Format("20060102_150405")
-	outputFile := fmt.Sprintf("results/agent_test_results_%s.json", timestamp)
+	outputFile := fmt.Sprintf("results/agent_test_results_%s_%s.json", sanitizedModel, timestamp)
 
 	// Ensure results directory exists
 	if err := os.MkdirAll("results", 0755); err != nil {
@@ -220,4 +222,18 @@ func printAgentSummary(report *models.AgentReport) {
 	// Print overall success rate
 	successRate := float64(report.PassedTests) / float64(report.TotalTests) * 100
 	fmt.Printf("\n📊 Overall Success Rate: %.2f%%\n", successRate)
+}
+
+// sanitizeModelName sanitizes the model name for use in filenames
+func sanitizeModelName(modelName string) string {
+	if modelName == "" {
+		modelName = "gpt-4o-mini"
+	}
+
+	// Replace problematic characters with underscores
+	sanitized := strings.ReplaceAll(modelName, "/", "_")
+	sanitized = strings.ReplaceAll(sanitized, " ", "_")
+	sanitized = strings.ReplaceAll(sanitized, ":", "_")
+
+	return sanitized
 }

@@ -30,11 +30,13 @@ type ChatSession struct {
 
 // ChatResponse represents the response from processing a chat message
 type ChatResponse struct {
-	Message     string           `json:"message"`
-	SessionID   string           `json:"session_id"`
-	CartSummary *CartSummary     `json:"cart_summary,omitempty"`
-	Timestamp   time.Time        `json:"timestamp"`
-	ToolCalls   []ToolCallResult `json:"tool_calls,omitempty"`
+	Message      string           `json:"message"`
+	SessionID    string           `json:"session_id"`
+	CartSummary  *CartSummary     `json:"cart_summary,omitempty"`
+	Timestamp    time.Time        `json:"timestamp"`
+	ToolCalls    []ToolCallResult `json:"tool_calls,omitempty"`
+	LLMRequests  int              `json:"llm_requests"`
+	LLMTotalTime time.Duration    `json:"llm_total_time"`
 }
 
 // ToolCallResult represents the result of executing a tool call
@@ -104,11 +106,14 @@ type AgentTestResult struct {
 
 // AgentReport contains the results of an agent test suite
 type AgentReport struct {
-	Timestamp   time.Time         `json:"timestamp"`
-	TestSuite   string            `json:"test_suite"`
-	Results     []AgentTestResult `json:"results"`
-	TotalTests  int               `json:"total_tests"`
-	PassedTests int               `json:"passed_tests"`
-	FailedTests int               `json:"failed_tests"`
-	AverageTime time.Duration     `json:"average_time"`
+	Timestamp        time.Time         `json:"timestamp"`
+	TestSuite        string            `json:"test_suite"`
+	Results          []AgentTestResult `json:"results"`
+	TotalTests       int               `json:"total_tests"`
+	PassedTests      int               `json:"passed_tests"`
+	FailedTests      int               `json:"failed_tests"`
+	AverageTime      time.Duration     `json:"average_time"`
+	TotalLLMRequests int               `json:"total_llm_requests"`
+	TotalLLMTime     time.Duration     `json:"total_llm_time"`
+	AvgTimePerReq    time.Duration     `json:"avg_time_per_request"`
 }

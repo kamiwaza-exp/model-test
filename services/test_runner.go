@@ -54,15 +54,24 @@ func (tr *TestRunner) RunAgentTestSuite(ctx context.Context, testCases []models.
 		close(resultsChan)
 	}()
 
-	// Collect results
+	// Collect results and aggregate LLM metrics
 	var results []models.AgentTestResult
 	var totalTime time.Duration
+	var totalLLMRequests int
+	var totalLLMTime time.Duration
 	passedTests := 0
 	failedTests := 0
 
 	for result := range resultsChan {
 		results = append(results, result)
 		totalTime += result.ResponseTime
+
+		// Aggregate LLM metrics from successful responses
+		if result.Response != nil {
+			totalLLMRequests += result.Response.LLMRequests
+			totalLLMTime += result.Response.LLMTotalTime
+		}
+
 		if result.Success {
 			passedTests++
 		} else {
@@ -70,20 +79,27 @@ func (tr *TestRunner) RunAgentTestSuite(ctx context.Context, testCases []models.
 		}
 	}
 
-	// Calculate average time
+	// Calculate average times
 	var averageTime time.Duration
+	var avgTimePerReq time.Duration
 	if len(results) > 0 {
 		averageTime = totalTime / time.Duration(len(results))
 	}
+	if totalLLMRequests > 0 {
+		avgTimePerReq = totalLLMTime / time.Duration(totalLLMRequests)
+	}
 
 	report := &models.AgentReport{
-		Timestamp:   time.Now(),
-		TestSuite:   "Agent Loop Tool Efficiency Test",
-		Results:     results,
-		TotalTests:  len(results),
-		PassedTests: passedTests,
-		FailedTests: failedTests,
-		AverageTime: averageTime,
+		Timestamp:        time.Now(),
+		TestSuite:        "Agent Loop Tool Efficiency Test",
+		Results:          results,
+		TotalTests:       len(results),
+		PassedTests:      passedTests,
+		FailedTests:      failedTests,
+		AverageTime:      averageTime,
+		TotalLLMRequests: totalLLMRequests,
+		TotalLLMTime:     totalLLMTime,
+		AvgTimePerReq:    avgTimePerReq,
 	}
 
 	return report, nil

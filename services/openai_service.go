@@ -71,11 +71,18 @@ func (ai *OpenAIService) ProcessChatMessage(ctx context.Context, userMessage str
 	var toolResults []models.ToolCallResult
 	var responseMessage string
 
+	// Track LLM request metrics
+	var llmRequests int
+	var totalLLMTime time.Duration
+
 	// Maximum number of tool call iterations
 	maxIterations := 5
 	currentIteration := 0
 
 	for currentIteration < maxIterations {
+		// Track LLM request time
+		llmStart := time.Now()
+
 		// Create the chat completion request
 		completion, err := ai.client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
 			Model:       ai.defaultModel,
@@ -83,6 +90,11 @@ func (ai *OpenAIService) ProcessChatMessage(ctx context.Context, userMessage str
 			Tools:       tools,
 			Temperature: param.Opt[float64]{Value: 0},
 		})
+
+		// Record LLM request metrics
+		llmDuration := time.Since(llmStart)
+		llmRequests++
+		totalLLMTime += llmDuration
 
 		if err != nil {
 			return nil, fmt.Errorf("failed to get AI response: %w", err)
@@ -135,11 +147,13 @@ func (ai *OpenAIService) ProcessChatMessage(ctx context.Context, userMessage str
 	cartSummary = ai.cartService.GetCartSummary(sessionID)
 
 	return &models.ChatResponse{
-		Message:     responseMessage,
-		SessionID:   sessionID,
-		CartSummary: cartSummary,
-		Timestamp:   time.Now(),
-		ToolCalls:   toolResults,
+		Message:      responseMessage,
+		SessionID:    sessionID,
+		CartSummary:  cartSummary,
+		Timestamp:    time.Now(),
+		ToolCalls:    toolResults,
+		LLMRequests:  llmRequests,
+		LLMTotalTime: totalLLMTime,
 	}, nil
 }
 

@@ -150,7 +150,8 @@ func printAgentSummary(report *models.AgentReport) {
 	fmt.Printf("Total Tests: %d\n", report.TotalTests)
 	fmt.Printf("✅ Passed: %d\n", report.PassedTests)
 	fmt.Printf("❌ Failed: %d\n", report.FailedTests)
-	fmt.Printf("⏱️  Average Response Time: %v\n", report.AverageTime)
+	fmt.Printf("⏱️  Total LLM Time: %v\n", report.TotalLLMTime)
+	fmt.Printf("⏱️  Average Time per Request: %v\n", report.AvgTimePerReq)
 	fmt.Println()
 
 	// Print results by test case

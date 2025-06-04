@@ -44,6 +44,60 @@ list-tests:
 	@jq -r '.[] | "  - " + .name + " (" + .prompt[0:50] + "...)"' config/test_cases.json 2>/dev/null || \
 		awk '/"name":/ && !/"arguments"/ {gsub(/[,"]/, ""); print "  - " $2}' config/test_cases.json
 
+# Test all available models
+test-all-models:
+	@echo "Running tests against all available models..."
+	./test-all-models.sh
+
+# Test specific models
+test-models:
+	@echo "Running tests against specified models: $(MODELS)"
+	./test-all-models.sh -m "$(MODELS)"
+
+# Test all models with specific test case
+test-all-models-case:
+	@echo "Running test case $(TEST_CASE) against all models"
+	./test-all-models.sh -t "$(TEST_CASE)"
+
+# Dry run to see what would be tested
+test-dry-run:
+	@echo "Dry run - showing what would be tested"
+	./test-all-models.sh -n
+
+# Build analysis tool
+build-analyzer:
+	@echo "Building batch analysis tool..."
+	cd cmd/analyze-batch && go build -o ../../analyze-batch .
+	@echo "Analysis tool built: analyze-batch"
+
+# Analyze most recent batch
+analyze-latest: build-analyzer
+	@latest=$(ls -1t results/batch_test_* 2>/dev/null | head -1); \
+	if [ -z "$latest" ]; then \
+		echo "No batch results found in results/ directory"; \
+		exit 1; \
+	fi; \
+	echo "Analyzing latest batch: $latest"; \
+	./analyze-batch "$latest"
+
+# Analyze specific batch
+analyze-batch: build-analyzer
+	@if [ -z "$(BATCH_DIR)" ]; then \
+		echo "Usage: make analyze-batch BATCH_DIR=results/batch_test_YYYYMMDD_HHMMSS"; \
+		exit 1; \
+	fi
+	@echo "Analyzing batch: $(BATCH_DIR)"
+	./analyze-batch "$(BATCH_DIR)"
+
+# Analyze batch with JSON output
+analyze-batch-json: build-analyzer
+	@if [ -z "$(BATCH_DIR)" ]; then \
+		echo "Usage: make analyze-batch-json BATCH_DIR=results/batch_test_YYYYMMDD_HHMMSS"; \
+		exit 1; \
+	fi
+	@echo "Analyzing batch: $(BATCH_DIR) (JSON output)"
+	./analyze-batch --format json "$(BATCH_DIR)"
+
 # Help target with comprehensive information
 help:
 	@echo "╔══════════════════════════════════════════════════════════════════════════════╗"
@@ -57,6 +111,14 @@ help:
 	@echo "  run-test           - Run specific test case (use TEST_CASE= and MODEL=)"
 	@echo "  run-model          - Run with custom model and settings"
 	@echo "  list-tests         - List all available test cases"
+	@echo "  test-all-models    - Test all available models (auto-discovered)"
+	@echo "  test-models        - Test specific models (use MODELS=\"model1,model2\")"
+	@echo "  test-all-models-case - Test specific case on all models (use TEST_CASE=)"
+	@echo "  test-dry-run       - Dry run to see what would be tested"
+	@echo "  build-analyzer     - Build the batch analysis tool"
+	@echo "  analyze-latest     - Analyze most recent batch results"
+	@echo "  analyze-batch      - Analyze specific batch (use BATCH_DIR=)"
+	@echo "  analyze-batch-json - Analyze batch with JSON output (use BATCH_DIR=)"
 	@echo "  help               - Show this help message"
 	@echo ""
 	@echo "🚀 USAGE EXAMPLES:"
@@ -66,6 +128,11 @@ help:
 	@echo "  make run-test TEST_CASE=\"simple_view_cart\" # Single test case"
 	@echo "  make run-model MODEL=\"claude-3-sonnet\"    # Custom model"
 	@echo "  make list-tests                             # List available test cases"
+	@echo "  make test-all-models                        # Test all discovered models"
+	@echo "  make test-models MODELS=\"gpt-4,claude-3\"   # Test specific models"
+	@echo "  make test-dry-run                           # See what would be tested"
+	@echo "  make analyze-latest                         # Analyze most recent batch"
+	@echo "  make analyze-batch BATCH_DIR=results/batch_test_20240604_112030 # Analyze specific batch"
 	@echo ""
 	@echo "🔧 CONFIGURATION:"
 	@echo "  MODEL              - Model to use (default: gpt-4o-mini)"
@@ -86,4 +153,4 @@ help:
 	@echo "  • Structured JSON request/response logging"
 
 # Phony targets
-.PHONY: build clean run run-test run-model list-tests help
+.PHONY: build clean run run-test run-model list-tests test-all-models test-models test-all-models-case test-dry-run build-analyzer analyze-latest analyze-batch analyze-batch-json help

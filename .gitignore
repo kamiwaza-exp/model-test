@@ -20,6 +20,7 @@ go.work
 # Project-specific compiled binary
 model-test
 model-test.exe
+analyze-batch
 
 # Generated test results
 results/

@@ -12,9 +12,6 @@ The `analyze-batch` tool provides comprehensive analysis of batch test results, 
 # Build the analysis tool
 make build-analyzer
 
-# Analyze most recent batch
-make analyze-latest
-
 # Analyze specific batch
 make analyze-batch BATCH_DIR=results/batch_test_20240604_112030
 
@@ -67,9 +64,6 @@ Evaluates whether the model calls the RIGHT specific tools:
 ```bash
 # Build the analysis tool
 make build-analyzer
-
-# Analyze most recent batch
-make analyze-latest
 
 # Analyze specific batch
 make analyze-batch BATCH_DIR=results/batch_test_20240604_112030
@@ -237,9 +231,6 @@ make test-all-models-case TEST_CASE="simple_add_iphone"
 ### 2. Analyze Results
 
 ```bash
-# Quick analysis of latest batch
-make analyze-latest
-
 # Detailed analysis of specific batch
 make analyze-batch BATCH_DIR=results/batch_test_20240604_112030
 ```

@@ -6,10 +6,10 @@
 set -e  # Exit on any error
 
 # Default configuration
-#DEFAULT_BASE_URL="http://localhost:12434/engines/v1"
+#DEFAULT_BASE_URL="http://localhost:13434/engines/v1"
 DEFAULT_BASE_URL="http://localhost:11434/v1"
 DEFAULT_API_KEY="DMR"
-DEFAULT_CONFIG="config/test_cases.json"
+DEFAULT_CONFIG="config/test_cases_simple.json"
 #DEFAULT_DOCKER_CMD="docker model ls --openai | jq '.data[].id'"
 DEFAULT_DOCKER_CMD="curl http://localhost:11434/v1/models | jq '.data[].id'"
 
@@ -17,6 +17,7 @@ DEFAULT_DOCKER_CMD="curl http://localhost:11434/v1/models | jq '.data[].id'"
 BASE_URL="${BASE_URL:-$DEFAULT_BASE_URL}"
 API_KEY="${API_KEY:-$DEFAULT_API_KEY}"
 CONFIG_FILE="${CONFIG_FILE:-$DEFAULT_CONFIG}"
+TEST_RUNS="${TEST_RUNS:-10}"
 TEST_CASE=""
 MODELS_OVERRIDE=""
 VERBOSE=false
@@ -64,6 +65,7 @@ OPTIONS:
     -v, --verbose           Enable verbose output
     -n, --dry-run          Show what would be executed without running tests
     -m, --models MODELS     Comma-separated list of models to test (overrides auto-discovery)
+    -r, --runs NUMBER       Number of test runs per model (default: 10)
     -t, --test-case NAME    Run only specific test case
     -c, --config FILE       Path to test cases config file (default: $DEFAULT_CONFIG)
     -u, --base-url URL      API base URL (default: $DEFAULT_BASE_URL)
@@ -73,14 +75,18 @@ ENVIRONMENT VARIABLES:
     BASE_URL               API base URL
     API_KEY                API key  
     CONFIG_FILE            Test cases config file
+    TEST_RUNS              Number of test runs per model (default: 10)
     DOCKER_MODEL_CMD       Custom command to get models (default: $DEFAULT_DOCKER_CMD)
 
 EXAMPLES:
-    $0                                          # Test all discovered models
-    $0 -m "gpt-4,gpt-3.5-turbo"               # Test specific models
+    $0                                          # Test all discovered models (10 runs each)
+    $0 -m "gpt-4,gpt-3.5-turbo"               # Test specific models (10 runs each)
+    $0 -r 5                                    # Test all models with 5 runs each
+    $0 -m "gpt-4" -r 3                         # Test gpt-4 with 3 runs
     $0 -t "simple_add_iphone"                  # Run single test case on all models
     $0 -v -n                                   # Dry run with verbose output
     $0 -u "http://localhost:8080/v1"           # Custom API endpoint
+    TEST_RUNS=20 $0                            # Use environment variable for 20 runs
 
 OUTPUT:
     Results are saved to: results/batch_test_YYYYMMDD_HHMMSS/
@@ -108,6 +114,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         -m|--models)
             MODELS_OVERRIDE="$2"
+            shift 2
+            ;;
+        -r|--runs)
+            TEST_RUNS="$2"
             shift 2
             ;;
         -t|--test-case)
@@ -185,18 +195,19 @@ sanitize_model_name() {
     echo "$1" | sed 's/[^a-zA-Z0-9._-]/_/g'
 }
 
-# Function to run test for a single model
+# Function to run test for a single model (single run)
 run_model_test() {
     local model="$1"
+    local run_number="$2"
     local sanitized_model=$(sanitize_model_name "$model")
-    local model_log_file="$BATCH_DIR/${sanitized_model}_test.log"
+    local model_log_file="$BATCH_DIR/${sanitized_model}_run${run_number}_test.log"
     
-    print_header "Testing model: $model"
-    log_message "Starting test for model: $model"
+    print_status "Model $model - Run $run_number/$TEST_RUNS"
+    log_message "Starting test run $run_number for model: $model"
     
     if [[ "$DRY_RUN" == "true" ]]; then
-        print_warning "DRY RUN: Would test model $model"
-        log_message "DRY RUN: Skipped test for model $model"
+        print_warning "DRY RUN: Would test model $model (run $run_number/$TEST_RUNS)"
+        log_message "DRY RUN: Skipped test run $run_number for model $model"
         return 0
     fi
     
@@ -374,16 +385,42 @@ main() {
     # Store tested models for summary
     TESTED_MODELS="$models"
     
-    # Test each model
+    # Test each model multiple times
     local total_models=$(echo "$models" | tr ',' '\n' | wc -l)
     local current_model=0
     local successful_tests=0
+    local total_runs=$((total_models * TEST_RUNS))
+    local current_run=0
+    
+    print_status "Configuration: $TEST_RUNS runs per model, $total_models models = $total_runs total test runs"
+    log_message "Starting batch test with $TEST_RUNS runs per model"
     
     for model in $(echo "$models" | tr ',' '\n'); do
         current_model=$((current_model + 1))
-        print_status "Progress: $current_model/$total_models"
+        print_header "Testing model $current_model/$total_models: $model"
         
-        if run_model_test "$model"; then
+        local model_successful_runs=0
+        
+        # Run the test suite multiple times for this model
+        for run in $(seq 1 $TEST_RUNS); do
+            current_run=$((current_run + 1))
+            print_status "Overall progress: $current_run/$total_runs"
+            
+            if run_model_test "$model" "$run"; then
+                model_successful_runs=$((model_successful_runs + 1))
+            fi
+            
+            # Add small delay between runs to ensure unique timestamps
+            if [[ "$DRY_RUN" != "true" && $run -lt $TEST_RUNS ]]; then
+                sleep 2
+            fi
+        done
+        
+        # Report model completion
+        print_success "Model $model completed: $model_successful_runs/$TEST_RUNS successful runs"
+        log_message "Model $model completed with $model_successful_runs/$TEST_RUNS successful runs"
+        
+        if [[ $model_successful_runs -gt 0 ]]; then
             successful_tests=$((successful_tests + 1))
         fi
         

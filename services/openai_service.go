@@ -23,10 +23,12 @@ type OpenAIService struct {
 	toolExecutor  *ToolExecutor
 	cartService   *CartService
 	defaultModel  string
+	baseURL       string
+	logger        *RequestLogger
 }
 
-// NewOpenAIService creates a new OpenAI service instance
-func NewOpenAIService(apiKey, baseURL, defaultModel string) *OpenAIService {
+// NewOpenAIServiceWithLogger creates a new OpenAI service instance with logging
+func NewOpenAIServiceWithLogger(apiKey, baseURL, defaultModel string, logger *RequestLogger) *OpenAIService {
 	options := []option.RequestOption{
 		option.WithBaseURL(baseURL),
 		option.WithAPIKey(apiKey),
@@ -50,11 +52,13 @@ func NewOpenAIService(apiKey, baseURL, defaultModel string) *OpenAIService {
 		toolExecutor:  toolExecutor,
 		cartService:   cartService,
 		defaultModel:  defaultModel,
+		baseURL:       baseURL,
+		logger:        logger,
 	}
 }
 
-// ProcessChatMessage processes a chat message and returns a response using an agent loop
-func (ai *OpenAIService) ProcessChatMessage(ctx context.Context, userMessage string, session *models.ChatSession) (*models.ChatResponse, error) {
+// ProcessChatMessage processes a chat message with test case context for logging
+func (ai *OpenAIService) ProcessChatMessage(ctx context.Context, userMessage string, session *models.ChatSession, testCase string) (*models.ChatResponse, error) {
 	// Generate session ID if not provided
 	sessionID := session.SessionID
 	if sessionID == "" {
@@ -83,18 +87,34 @@ func (ai *OpenAIService) ProcessChatMessage(ctx context.Context, userMessage str
 		// Track LLM request time
 		llmStart := time.Now()
 
-		// Create the chat completion request
-		completion, err := ai.client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
+		// Prepare request parameters
+		requestParams := openai.ChatCompletionNewParams{
 			Model:       ai.defaultModel,
 			Messages:    messages,
 			Tools:       t,
 			Temperature: param.Opt[float64]{Value: 0},
-		})
+		}
+
+		// Create the chat completion request
+		completion, err := ai.client.Chat.Completions.New(ctx, requestParams)
 
 		// Record LLM request metrics
 		llmDuration := time.Since(llmStart)
 		llmRequests++
 		totalLLMTime += llmDuration
+
+		// Log the request/response or error
+		if ai.logger != nil {
+			if err != nil {
+				if logErr := ai.logger.LogError(testCase, currentIteration+1, requestParams, err, ai.baseURL); logErr != nil {
+					fmt.Printf("Failed to log error: %v\n", logErr)
+				}
+			} else {
+				if logErr := ai.logger.LogRequest(testCase, currentIteration+1, requestParams, completion, ai.baseURL); logErr != nil {
+					fmt.Printf("Failed to log request: %v\n", logErr)
+				}
+			}
+		}
 
 		if err != nil {
 			return nil, fmt.Errorf("failed to get AI response: %w", err)

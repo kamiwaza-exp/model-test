@@ -18,14 +18,21 @@ type TestRunner struct {
 	results       []models.AgentTestResult
 	mutex         sync.Mutex
 	defaultModel  string
+	logger        *RequestLogger
 }
 
 // NewTestRunner creates a new test runner instance
 func NewTestRunner(apiKey, baseURL, defaultModel string) *TestRunner {
+	return NewTestRunnerWithLogger(apiKey, baseURL, defaultModel, nil)
+}
+
+// NewTestRunnerWithLogger creates a new test runner instance with logging
+func NewTestRunnerWithLogger(apiKey, baseURL, defaultModel string, logger *RequestLogger) *TestRunner {
 	return &TestRunner{
-		openaiService: NewOpenAIService(apiKey, baseURL, defaultModel),
+		openaiService: NewOpenAIServiceWithLogger(apiKey, baseURL, defaultModel, logger),
 		results:       make([]models.AgentTestResult, 0),
 		defaultModel:  defaultModel,
+		logger:        logger,
 	}
 }
 
@@ -136,7 +143,7 @@ func (tr *TestRunner) runAgentTest(ctx context.Context, testCase models.TestCase
 	}
 
 	// Execute the test using the agent loop
-	response, err := tr.openaiService.ProcessChatMessage(ctx, testCase.Prompt, session)
+	response, err := tr.openaiService.ProcessChatMessage(ctx, testCase.Prompt, session, testCase.Name)
 	responseTime := time.Since(startTime)
 
 	if err != nil {

@@ -20,6 +20,7 @@ clean:
 	go clean
 	rm -f $(BINARY_NAME)
 	rm -rf results/
+	rm -rf logs/
 	@echo "Clean complete"
 
 # Run the application with default settings
@@ -43,11 +44,6 @@ list-tests:
 	@jq -r '.[] | "  - " + .name + " (" + .prompt[0:50] + "...)"' config/test_cases.json 2>/dev/null || \
 		awk '/"name":/ && !/"arguments"/ {gsub(/[,"]/, ""); print "  - " $2}' config/test_cases.json
 
-# Show recent results
-show-results:
-	@echo "Recent test results:"
-	@ls -la results/ | tail -5 || echo "No results found. Run 'make run' first."
-
 # Help target with comprehensive information
 help:
 	@echo "╔══════════════════════════════════════════════════════════════════════════════╗"
@@ -61,7 +57,6 @@ help:
 	@echo "  run-test           - Run specific test case (use TEST_CASE= and MODEL=)"
 	@echo "  run-model          - Run with custom model and settings"
 	@echo "  list-tests         - List all available test cases"
-	@echo "  show-results       - Show recent test results"
 	@echo "  help               - Show this help message"
 	@echo ""
 	@echo "🚀 USAGE EXAMPLES:"
@@ -71,7 +66,6 @@ help:
 	@echo "  make run-test TEST_CASE=\"simple_view_cart\" # Single test case"
 	@echo "  make run-model MODEL=\"claude-3-sonnet\"    # Custom model"
 	@echo "  make list-tests                             # List available test cases"
-	@echo "  make show-results                           # View recent results"
 	@echo ""
 	@echo "🔧 CONFIGURATION:"
 	@echo "  MODEL              - Model to use (default: gpt-4o-mini)"
@@ -80,8 +74,8 @@ help:
 	@echo "  TEST_CASE          - Specific test case to run"
 	@echo ""
 	@echo "📁 OUTPUT:"
-	@echo "  Results are saved to 'results/' with format:"
-	@echo "  agent_test_results_<model>_<timestamp>.json"
+	@echo "  Results: results/agent_test_results_<model>_<timestamp>.json"
+	@echo "  Logs:    logs/agent_test_logs_<model>_<timestamp>.log"
 	@echo ""
 	@echo "📊 FEATURES:"
 	@echo "  • Agent loop with up to 5 LLM iterations"
@@ -89,6 +83,7 @@ help:
 	@echo "  • Cart state initialization for complex tests"
 	@echo "  • LLM request timing metrics"
 	@echo "  • Model name in result filenames"
+	@echo "  • Structured JSON request/response logging"
 
 # Phony targets
-.PHONY: build clean run run-test run-model list-tests show-results help
+.PHONY: build clean run run-test run-model list-tests help

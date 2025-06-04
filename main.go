@@ -53,18 +53,29 @@ func main() {
 		log.Fatalf("Failed to load test cases: %v", err)
 	}
 
-	// Generate output filename with model name
+	// Generate output filenames with model name
 	sanitizedModel := sanitizeModelName(*model)
 	timestamp := time.Now().Format("20060102_150405")
 	outputFile := fmt.Sprintf("results/agent_test_results_%s_%s.json", sanitizedModel, timestamp)
+	logFile := fmt.Sprintf("logs/agent_test_logs_%s_%s.log", sanitizedModel, timestamp)
 
-	// Ensure results directory exists
+	// Ensure directories exist
 	if err := os.MkdirAll("results", 0755); err != nil {
 		log.Fatalf("Failed to create results directory: %v", err)
 	}
+	if err := os.MkdirAll("logs", 0755); err != nil {
+		log.Fatalf("Failed to create logs directory: %v", err)
+	}
 
-	// Create test runner
-	runner := services.NewTestRunner(*apiKey, *baseURL, *model)
+	// Create request logger
+	logger, err := services.NewRequestLogger(logFile)
+	if err != nil {
+		log.Fatalf("Failed to create request logger: %v", err)
+	}
+	defer logger.Close()
+
+	// Create test runner with logger
+	runner := services.NewTestRunnerWithLogger(*apiKey, *baseURL, *model, logger)
 
 	// Print test configuration
 	fmt.Printf("🚀 Starting Agent Loop Tool Efficiency Test\n")
@@ -80,6 +91,7 @@ func main() {
 	}
 	fmt.Printf("   Test Cases: %d\n", len(testCases))
 	fmt.Printf("   Output: %s\n", outputFile)
+	fmt.Printf("   Log File: %s\n", logFile)
 	fmt.Println()
 
 	// Run tests
@@ -105,6 +117,7 @@ func main() {
 	printAgentSummary(report)
 
 	fmt.Printf("\n💾 Results saved to: %s\n", outputFile)
+	fmt.Printf("📝 Request logs saved to: %s\n", logFile)
 }
 
 // loadTestCases loads test cases from a JSON file, optionally filtering by test case name

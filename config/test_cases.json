@@ -101,7 +101,7 @@
           {
             "name": "add_to_cart",
             "arguments": {
-              "product_name": "iPhone"
+              "product_name": "iPhone 15"
             }
           }
         ]
@@ -126,7 +126,15 @@
   },
   {
     "name": "simple_remove_product",
-    "prompt": "Remove Samsung from my cart",
+    "prompt": "Remove iPhone 15 from my cart",
+    "initial_cart_state": {
+      "items": [
+        {
+          "product_name": "iPhone 15",
+          "quantity": 1
+        }
+      ]
+    },
     "expected_tools_variants": [
       {
         "name": "direct_remove",
@@ -135,16 +143,41 @@
           {
             "name": "remove_from_cart",
             "arguments": {
-              "product_name": "Samsung"
+              "product_name": "iPhone 15"
+            }
+          }
+        ]
+      },
+      {
+        "name": "view_cart_and_remove",
+        "description": "Direct remove from cart",
+        "tools": [
+          {
+            "name": "view_cart",
+            "arguments": {}
+          },
+          {
+            "name": "remove_from_cart",
+            "arguments": {
+              "product_name": "iPhone 15"
             }
           }
         ]
       }
+
     ]
   },
   {
     "name": "simple_checkout",
     "prompt": "Proceed to checkout",
+    "initial_cart_state": {
+      "items": [
+        {
+          "product_name": "iPhone 15",
+          "quantity": 1
+        }
+      ]
+    },
     "expected_tools_variants": [
       {
         "name": "direct_checkout",
@@ -269,7 +302,31 @@
             }
           }
         ]
+      },
+      {
+        "name": "view_search_then_add",
+        "description": "View cart, search products then add more items",
+        "tools": [
+          {
+            "name": "view_cart",
+            "arguments": {}
+          },
+          {
+            "name": "search_products",
+            "arguments": {
+              "query": "iPhone"
+            }
+          },
+          {
+            "name": "add_to_cart",
+            "arguments": {
+              "product_name": "iPhone",
+              "quantity": 5
+            }
+          }
+        ]
       }
+
     ]
   },
   {

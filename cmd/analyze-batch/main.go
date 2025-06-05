@@ -29,12 +29,13 @@ type MetricSet struct {
 
 // ModelAnalysis represents the analysis results for a single model
 type ModelAnalysis struct {
-	ModelName      string    `json:"model_name"`
-	ToolInvocation MetricSet `json:"tool_invocation"` // Binary: should call tool vs did call tool
-	ToolSelection  MetricSet `json:"tool_selection"`  // Specific: right tool vs wrong tool
-	TotalTests     int       `json:"total_tests"`
-	TotalRuns      int       `json:"total_runs"`
-	ResultFiles    []string  `json:"result_files"`
+	ModelName           string    `json:"model_name"`
+	ToolInvocation      MetricSet `json:"tool_invocation"`       // Binary: should call tool vs did call tool
+	ToolSelection       MetricSet `json:"tool_selection"`        // Specific: right tool vs wrong tool
+	AverageResponseTime float64   `json:"average_response_time"` // Average response time in seconds
+	TotalTests          int       `json:"total_tests"`
+	TotalRuns           int       `json:"total_runs"`
+	ResultFiles         []string  `json:"result_files"`
 }
 
 // BatchAnalysisReport represents the complete analysis report
@@ -206,14 +207,16 @@ func analyzeModel(modelName string, files []string) (*ModelAnalysis, error) {
 	// Calculate metrics
 	toolInvocation := calculateToolInvocationMetrics(allResults)
 	toolSelection := calculateToolSelectionMetrics(allResults)
+	averageResponseTime := calculateAverageResponseTime(allResults)
 
 	analysis := &ModelAnalysis{
-		ModelName:      modelName,
-		ToolInvocation: toolInvocation,
-		ToolSelection:  toolSelection,
-		TotalTests:     len(allResults),
-		TotalRuns:      len(files),
-		ResultFiles:    files,
+		ModelName:           modelName,
+		ToolInvocation:      toolInvocation,
+		ToolSelection:       toolSelection,
+		AverageResponseTime: averageResponseTime,
+		TotalTests:          len(allResults),
+		TotalRuns:           len(files),
+		ResultFiles:         files,
 	}
 
 	return analysis, nil
@@ -356,6 +359,22 @@ func matchesVariant(expectedTools []models.ExpectedToolCall, actualTools []strin
 	return true
 }
 
+// calculateAverageResponseTime calculates the average response time in seconds
+func calculateAverageResponseTime(results []models.AgentTestResult) float64 {
+	if len(results) == 0 {
+		return 0.0
+	}
+
+	var totalTime time.Duration
+	for _, result := range results {
+		totalTime += result.ResponseTime
+	}
+
+	// Convert to seconds and calculate average
+	averageNanoseconds := float64(totalTime) / float64(len(results))
+	return averageNanoseconds / 1e9 // Convert nanoseconds to seconds
+}
+
 // calculateMetrics calculates precision, recall, and F1 from confusion matrix values
 func calculateMetrics(tp, fp, tn, fn int) MetricSet {
 	var precision, recall, f1 float64
@@ -398,6 +417,7 @@ func generateTextReport(report *BatchAnalysisReport) string {
 	for _, model := range report.Models {
 		sb.WriteString(fmt.Sprintf("%s:\n", model.ModelName))
 		sb.WriteString(fmt.Sprintf("  Runs: %d, Tests: %d\n", model.TotalRuns, model.TotalTests))
+		sb.WriteString(fmt.Sprintf("  Average Response Time: %.2fs\n", model.AverageResponseTime))
 		sb.WriteString("  Tool Invocation (Binary):\n")
 		sb.WriteString(fmt.Sprintf("    Precision: %.3f (%d/%d)\n",
 			model.ToolInvocation.Precision,

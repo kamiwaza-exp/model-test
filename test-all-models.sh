@@ -5,12 +5,36 @@
 
 set -e  # Exit on any error
 
-# Default configuration
-#DEFAULT_BASE_URL="http://localhost:13434/engines/v1"
+# Provider configurations (using case statements for compatibility)
+get_provider_config() {
+    local provider="$1"
+    case "$provider" in
+        "ollama")
+            echo "base_url:http://localhost:11434/v1,api_key:ollama,api_endpoint:http://localhost:11434/v1/models"
+            ;;
+        "dmr")
+            echo "base_url:http://localhost:13434/engines/v1,api_key:DMR,api_endpoint:http://localhost:13434/engines/v1/models"
+            ;;
+        "openai")
+            echo "base_url:https://api.openai.com/v1,api_key:${OPENAI_API_KEY:-},api_endpoint:"
+            ;;
+        "anthropic")
+            echo "base_url:https://api.anthropic.com/v1,api_key:${ANTHROPIC_API_KEY:-},api_endpoint:"
+            ;;
+        *)
+            echo ""
+            ;;
+    esac
+}
+
+get_available_providers() {
+    echo "ollama dmr openai anthropic"
+}
+
+
 DEFAULT_BASE_URL="http://localhost:11434/v1"
 DEFAULT_API_KEY="DMR"
 DEFAULT_CONFIG="config/test_cases_simple.json"
-#DEFAULT_DOCKER_CMD="docker model ls --openai | jq '.data[].id'"
 DEFAULT_DOCKER_CMD="curl http://localhost:11434/v1/models | jq '.data[].id'"
 
 # Script configuration
@@ -20,6 +44,7 @@ CONFIG_FILE="${CONFIG_FILE:-$DEFAULT_CONFIG}"
 TEST_RUNS="${TEST_RUNS:-10}"
 TEST_CASE=""
 MODELS_OVERRIDE=""
+PROVIDERS_OVERRIDE=""
 VERBOSE=false
 DRY_RUN=false
 
@@ -64,6 +89,7 @@ OPTIONS:
     -h, --help              Show this help message
     -v, --verbose           Enable verbose output
     -n, --dry-run          Show what would be executed without running tests
+    -p, --providers PROVIDERS Comma-separated list of providers to test (e.g., "ollama,dmr")
     -m, --models MODELS     Comma-separated list of models to test (overrides auto-discovery)
     -r, --runs NUMBER       Number of test runs per model (default: 10)
     -t, --test-case NAME    Run only specific test case
@@ -80,13 +106,22 @@ ENVIRONMENT VARIABLES:
 
 EXAMPLES:
     $0                                          # Test all discovered models (10 runs each)
+    $0 -p "ollama,dmr"                         # Test models from ollama and dmr providers
+    $0 -p "ollama" -r 5                        # Test ollama models with 5 runs each
     $0 -m "gpt-4,gpt-3.5-turbo"               # Test specific models (10 runs each)
     $0 -r 5                                    # Test all models with 5 runs each
     $0 -m "gpt-4" -r 3                         # Test gpt-4 with 3 runs
     $0 -t "simple_add_iphone"                  # Run single test case on all models
+    $0 -p "ollama" -t "simple_add_iphone"      # Test ollama models with specific test case
     $0 -v -n                                   # Dry run with verbose output
     $0 -u "http://localhost:8080/v1"           # Custom API endpoint
     TEST_RUNS=20 $0                            # Use environment variable for 20 runs
+
+AVAILABLE PROVIDERS:
+    ollama      - Local Ollama instance (http://localhost:11434/v1)
+    dmr         - DMR instance (http://localhost:13434/engines/v1)
+    openai      - OpenAI API (requires OPENAI_API_KEY environment variable)
+    anthropic   - Anthropic API (requires ANTHROPIC_API_KEY environment variable)
 
 OUTPUT:
     Results are saved to: results/batch_test_YYYYMMDD_HHMMSS/
@@ -111,6 +146,10 @@ while [[ $# -gt 0 ]]; do
         -n|--dry-run)
             DRY_RUN=true
             shift
+            ;;
+        -p|--providers)
+            PROVIDERS_OVERRIDE="$2"
+            shift 2
             ;;
         -m|--models)
             MODELS_OVERRIDE="$2"
@@ -151,6 +190,112 @@ log_message() {
     if [[ "$VERBOSE" == "true" ]]; then
         print_status "$1"
     fi
+}
+
+# Function to parse provider configuration
+parse_provider_config() {
+    local provider="$1"
+    local config=$(get_provider_config "$provider")
+    
+    if [[ -z "$config" ]]; then
+        print_error "Unknown provider: $provider"
+        print_status "Available providers: $(get_available_providers)"
+        return 1
+    fi
+    
+    # Parse the configuration string
+    local base_url=$(echo "$config" | grep -o 'base_url:[^,]*' | cut -d: -f2-)
+    local api_key=$(echo "$config" | grep -o 'api_key:[^,]*' | cut -d: -f2-)
+    local api_endpoint=$(echo "$config" | grep -o 'api_endpoint:.*' | cut -d: -f2-)
+    
+    echo "$base_url|$api_key|$api_endpoint"
+}
+
+# Function to discover models from a specific provider
+discover_models_from_provider() {
+    local provider="$1"
+    local config_result=$(parse_provider_config "$provider" 2>/dev/null)
+    
+    if [[ $? -ne 0 ]]; then
+        return 1
+    fi
+    
+    local base_url=$(echo "$config_result" | cut -d'|' -f1)
+    local api_key=$(echo "$config_result" | cut -d'|' -f2)
+    local api_endpoint=$(echo "$config_result" | cut -d'|' -f3)
+    
+    if [[ "$DRY_RUN" == "true" ]]; then
+        # Return mock models based on provider
+        case "$provider" in
+            "ollama") echo "llama2,codellama" ;;
+            "dmr") echo "gpt-4,gpt-3.5-turbo" ;;
+            "openai") echo "gpt-4o,gpt-4o-mini" ;;
+            "anthropic") echo "claude-3-5-sonnet-20241022,claude-3-haiku-20240307" ;;
+            *) echo "mock-model-1,mock-model-2" ;;
+        esac
+        return
+    fi
+    
+    local models=""
+    
+    # Handle different provider types
+    case "$provider" in
+        "ollama"|"dmr")
+            if [[ -n "$api_endpoint" ]] && command -v curl >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
+                # Fetch JSON response
+                local json_response=$(curl -s "$api_endpoint" 2>/dev/null)
+                if [[ $? -eq 0 && -n "$json_response" ]]; then
+                    # Parse JSON to extract model IDs
+                    models=$(echo "$json_response" | jq -r '.data[]?.id // empty' 2>/dev/null | tr '\n' ',' | sed 's/,$//')
+                fi
+            fi
+            ;;
+        "openai")
+            models="gpt-4o,gpt-4o-mini,gpt-4,gpt-3.5-turbo"
+            ;;
+        "anthropic")
+            models="claude-3-5-sonnet-20241022,claude-3-haiku-20240307,claude-3-opus-20240229"
+            ;;
+    esac
+    
+    # Use fallback if discovery failed
+    if [[ -z "$models" ]]; then
+        case "$provider" in
+            "ollama") models="llama2,codellama" ;;
+            "dmr") models="gpt-4,gpt-3.5-turbo" ;;
+            "openai") models="gpt-4o,gpt-4o-mini,gpt-4,gpt-3.5-turbo" ;;
+            "anthropic") models="claude-3-5-sonnet-20241022,claude-3-haiku-20240307,claude-3-opus-20240229" ;;
+            *) models="fallback-model" ;;
+        esac
+    fi
+    
+    echo "$models"
+}
+
+# Function to discover models from multiple providers
+discover_models_from_providers() {
+    local providers="$1"
+    local all_models=""
+    
+    for provider in $(echo "$providers" | tr ',' '\n'); do
+        provider=$(echo "$provider" | xargs)  # trim whitespace
+        print_status "Processing provider: $provider" >&2
+        
+        local provider_models=$(discover_models_from_provider "$provider" 2>/dev/null)
+        if [[ $? -eq 0 && -n "$provider_models" ]]; then
+            if [[ -n "$all_models" ]]; then
+                all_models="$all_models,$provider_models"
+            else
+                all_models="$provider_models"
+            fi
+            log_message "Provider $provider contributed models: $provider_models" 2>/dev/null
+        else
+            print_warning "Failed to get models from provider: $provider" >&2
+            log_message "Provider $provider failed to provide models" 2>/dev/null
+        fi
+    done
+    
+    echo "$all_models"
 }
 
 # Function to discover models
@@ -195,6 +340,28 @@ sanitize_model_name() {
     echo "$1" | sed 's/[^a-zA-Z0-9._-]/_/g'
 }
 
+# Function to get provider for a model (when using provider-based discovery)
+get_model_provider() {
+    local model="$1"
+    
+    if [[ -z "$PROVIDERS_OVERRIDE" ]]; then
+        echo ""
+        return
+    fi
+    
+    # Check each provider to see if this model belongs to it
+    for provider in $(echo "$PROVIDERS_OVERRIDE" | tr ',' '\n'); do
+        provider=$(echo "$provider" | xargs)  # trim whitespace
+        local provider_models=$(discover_models_from_provider "$provider" 2>/dev/null)
+        if [[ "$provider_models" == *"$model"* ]]; then
+            echo "$provider"
+            return
+        fi
+    done
+    
+    echo ""
+}
+
 # Function to run test for a single model (single run)
 run_model_test() {
     local model="$1"
@@ -211,6 +378,22 @@ run_model_test() {
         return 0
     fi
     
+    # Determine provider-specific configuration if using providers
+    local test_base_url="$BASE_URL"
+    local test_api_key="$API_KEY"
+    
+    if [[ -n "$PROVIDERS_OVERRIDE" ]]; then
+        local model_provider=$(get_model_provider "$model")
+        if [[ -n "$model_provider" ]]; then
+            local config_result=$(parse_provider_config "$model_provider")
+            if [[ $? -eq 0 ]]; then
+                test_base_url=$(echo "$config_result" | cut -d'|' -f1)
+                test_api_key=$(echo "$config_result" | cut -d'|' -f2)
+                log_message "Using provider $model_provider config for model $model: base_url=$test_base_url"
+            fi
+        fi
+    fi
+    
     # Build the application first
     print_status "Building application..."
     if ! make build >> "$model_log_file" 2>&1; then
@@ -220,7 +403,7 @@ run_model_test() {
     fi
     
     # Prepare test command
-    local test_cmd="./model-test --model=\"$model\" --config=\"$CONFIG_FILE\" --base-url=\"$BASE_URL\" --api-key=\"$API_KEY\""
+    local test_cmd="./model-test --model=\"$model\" --config=\"$CONFIG_FILE\" --base-url=\"$test_base_url\" --api-key=\"$test_api_key\""
     
     if [[ -n "$TEST_CASE" ]]; then
         test_cmd="$test_cmd --test-case=\"$TEST_CASE\""
@@ -372,6 +555,10 @@ main() {
         models="$MODELS_OVERRIDE"
         print_status "Using manually specified models: $models"
         log_message "Using manual model override: $models"
+    elif [[ -n "$PROVIDERS_OVERRIDE" ]]; then
+        models=$(discover_models_from_providers "$PROVIDERS_OVERRIDE")
+        print_status "Discovered models from providers ($PROVIDERS_OVERRIDE): $models"
+        log_message "Using provider-based model discovery: $PROVIDERS_OVERRIDE"
     else
         models=$(discover_models)
         print_status "Discovered models: $models"

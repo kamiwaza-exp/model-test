@@ -30,6 +30,7 @@ type MetricSet struct {
 // ModelAnalysis represents the analysis results for a single model
 type ModelAnalysis struct {
 	ModelName           string    `json:"model_name"`
+	BatchSource         string    `json:"batch_source"`          // Which batch directory this model came from
 	ToolInvocation      MetricSet `json:"tool_invocation"`       // Binary: should call tool vs did call tool
 	ToolSelection       MetricSet `json:"tool_selection"`        // Specific: right tool vs wrong tool
 	AverageResponseTime float64   `json:"average_response_time"` // Average response time in seconds
@@ -40,10 +41,10 @@ type ModelAnalysis struct {
 
 // BatchAnalysisReport represents the complete analysis report
 type BatchAnalysisReport struct {
-	BatchDirectory string          `json:"batch_directory"`
-	AnalysisDate   time.Time       `json:"analysis_date"`
-	Models         []ModelAnalysis `json:"models"`
-	Summary        string          `json:"summary"`
+	BatchDirectories []string        `json:"batch_directories"`
+	AnalysisDate     time.Time       `json:"analysis_date"`
+	Models           []ModelAnalysis `json:"models"`
+	Summary          string          `json:"summary"`
 }
 
 func main() {
@@ -53,24 +54,27 @@ func main() {
 	)
 	flag.Parse()
 
-	if len(flag.Args()) != 1 {
-		fmt.Fprintf(os.Stderr, "Usage: %s [options] <batch_directory>\n", os.Args[0])
+	if len(flag.Args()) < 1 {
+		fmt.Fprintf(os.Stderr, "Usage: %s [options] <batch_directory> [batch_directory2] ...\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "\nAnalyze one or more batch directories. Multiple directories will be treated as a single combined batch.\n")
 		fmt.Fprintf(os.Stderr, "\nOptions:\n")
 		flag.PrintDefaults()
 		os.Exit(1)
 	}
 
-	batchDir := flag.Args()[0]
+	batchDirs := flag.Args()
 
-	// Validate batch directory exists
-	if _, err := os.Stat(batchDir); os.IsNotExist(err) {
-		log.Fatalf("Batch directory does not exist: %s", batchDir)
+	// Validate all batch directories exist
+	for _, batchDir := range batchDirs {
+		if _, err := os.Stat(batchDir); os.IsNotExist(err) {
+			log.Fatalf("Batch directory does not exist: %s", batchDir)
+		}
 	}
 
-	// Analyze the batch
-	report, err := analyzeBatch(batchDir)
+	// Analyze the batches
+	report, err := analyzeBatches(batchDirs)
 	if err != nil {
-		log.Fatalf("Failed to analyze batch: %v", err)
+		log.Fatalf("Failed to analyze batches: %v", err)
 	}
 
 	// Generate output
@@ -97,25 +101,36 @@ func main() {
 	}
 }
 
-// analyzeBatch analyzes all result files in a batch directory
-func analyzeBatch(batchDir string) (*BatchAnalysisReport, error) {
-	// Find all result files
-	resultFiles, err := findResultFiles(batchDir)
-	if err != nil {
-		return nil, fmt.Errorf("failed to find result files: %w", err)
+// ModelFileInfo holds files and their batch source for a model
+type ModelFileInfo struct {
+	files       []string
+	batchSource string
+}
+
+// analyzeBatches analyzes all result files across multiple batch directories
+func analyzeBatches(batchDirs []string) (*BatchAnalysisReport, error) {
+	var allResultFiles []string
+
+	// Collect all result files from all batch directories
+	for _, batchDir := range batchDirs {
+		resultFiles, err := findResultFiles(batchDir)
+		if err != nil {
+			return nil, fmt.Errorf("failed to find result files in %s: %w", batchDir, err)
+		}
+		allResultFiles = append(allResultFiles, resultFiles...)
 	}
 
-	if len(resultFiles) == 0 {
-		return nil, fmt.Errorf("no result files found in directory: %s", batchDir)
+	if len(allResultFiles) == 0 {
+		return nil, fmt.Errorf("no result files found in any of the directories: %v", batchDirs)
 	}
 
-	// Group files by model
-	modelFiles := groupFilesByModel(resultFiles)
+	// Group files by model across all batches
+	modelFiles := groupFilesByModelWithSource(allResultFiles, batchDirs)
 
 	// Analyze each model
 	var models []ModelAnalysis
-	for modelName, files := range modelFiles {
-		analysis, err := analyzeModel(modelName, files)
+	for modelName, fileInfo := range modelFiles {
+		analysis, err := analyzeModelWithSource(modelName, fileInfo.files, fileInfo.batchSource)
 		if err != nil {
 			log.Printf("Warning: failed to analyze model %s: %v", modelName, err)
 			continue
@@ -129,13 +144,18 @@ func analyzeBatch(batchDir string) (*BatchAnalysisReport, error) {
 	})
 
 	report := &BatchAnalysisReport{
-		BatchDirectory: batchDir,
-		AnalysisDate:   time.Now(),
-		Models:         models,
-		Summary:        generateSummary(models),
+		BatchDirectories: batchDirs,
+		AnalysisDate:     time.Now(),
+		Models:           models,
+		Summary:          generateSummary(models),
 	}
 
 	return report, nil
+}
+
+// analyzeBatch analyzes all result files in a batch directory
+func analyzeBatch(batchDir string) (*BatchAnalysisReport, error) {
+	return analyzeBatches([]string{batchDir})
 }
 
 // findResultFiles finds all agent test result files in the directory
@@ -187,8 +207,64 @@ func groupFilesByModel(files []string) map[string][]string {
 	return modelFiles
 }
 
+// groupFilesByModelWithSource groups result files by model name and determines batch source
+func groupFilesByModelWithSource(files []string, batchDirs []string) map[string]ModelFileInfo {
+	modelFiles := make(map[string]ModelFileInfo)
+
+	// Pattern to extract model name from filename
+	pattern := regexp.MustCompile(`^(.+?)_agent_test_results_`)
+
+	for _, file := range files {
+		basename := filepath.Base(file)
+		matches := pattern.FindStringSubmatch(basename)
+
+		var modelName string
+		if len(matches) > 1 {
+			modelName = matches[1]
+		} else {
+			// Fallback: try to extract model name from the middle part
+			parts := strings.Split(basename, "_")
+			if len(parts) >= 4 {
+				modelName = parts[0]
+			} else {
+				modelName = "unknown"
+			}
+		}
+
+		// Determine which batch directory this file came from
+		var batchSource string
+		for _, batchDir := range batchDirs {
+			if strings.HasPrefix(file, batchDir) {
+				batchSource = batchDir
+				break
+			}
+		}
+		if batchSource == "" {
+			batchSource = "unknown"
+		}
+
+		// Get existing info or create new
+		info := modelFiles[modelName]
+		info.files = append(info.files, file)
+		if info.batchSource == "" {
+			info.batchSource = batchSource
+		} else if info.batchSource != batchSource {
+			// Model appears in multiple batches, combine the sources
+			info.batchSource = info.batchSource + "," + batchSource
+		}
+		modelFiles[modelName] = info
+	}
+
+	return modelFiles
+}
+
 // analyzeModel analyzes all result files for a single model
 func analyzeModel(modelName string, files []string) (*ModelAnalysis, error) {
+	return analyzeModelWithSource(modelName, files, "")
+}
+
+// analyzeModelWithSource analyzes all result files for a single model with batch source info
+func analyzeModelWithSource(modelName string, files []string, batchSource string) (*ModelAnalysis, error) {
 	var allResults []models.AgentTestResult
 
 	// Load and aggregate all results from all files
@@ -211,6 +287,7 @@ func analyzeModel(modelName string, files []string) (*ModelAnalysis, error) {
 
 	analysis := &ModelAnalysis{
 		ModelName:           modelName,
+		BatchSource:         batchSource,
 		ToolInvocation:      toolInvocation,
 		ToolSelection:       toolSelection,
 		AverageResponseTime: averageResponseTime,
@@ -408,7 +485,7 @@ func generateTextReport(report *BatchAnalysisReport) string {
 
 	sb.WriteString("Batch Analysis Report\n")
 	sb.WriteString("=====================\n")
-	sb.WriteString(fmt.Sprintf("Batch Directory: %s\n", report.BatchDirectory))
+	sb.WriteString(fmt.Sprintf("Batch Directories: %s\n", strings.Join(report.BatchDirectories, ", ")))
 	sb.WriteString(fmt.Sprintf("Analysis Date: %s\n\n", report.AnalysisDate.Format("2006-01-02 15:04:05")))
 
 	sb.WriteString("Model Performance Summary:\n")
@@ -416,6 +493,9 @@ func generateTextReport(report *BatchAnalysisReport) string {
 
 	for _, model := range report.Models {
 		sb.WriteString(fmt.Sprintf("%s:\n", model.ModelName))
+		if model.BatchSource != "" {
+			sb.WriteString(fmt.Sprintf("  Batch Source: %s\n", model.BatchSource))
+		}
 		sb.WriteString(fmt.Sprintf("  Runs: %d, Tests: %d\n", model.TotalRuns, model.TotalTests))
 		sb.WriteString(fmt.Sprintf("  Average Response Time: %.2fs\n", model.AverageResponseTime))
 		sb.WriteString("  Tool Invocation (Binary):\n")

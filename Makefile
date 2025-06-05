@@ -88,6 +88,24 @@ analyze-batch-json: build-analyzer
 	@echo "Analyzing batch: $(BATCH_DIR) (JSON output)"
 	./analyze-batch --format json "$(BATCH_DIR)"
 
+# Analyze multiple batches as a combined analysis
+analyze-multi-batch: build-analyzer
+	@if [ -z "$(BATCH_DIRS)" ]; then \
+		echo "Usage: make analyze-multi-batch BATCH_DIRS=\"batch1/ batch2/ batch3/\""; \
+		exit 1; \
+	fi
+	@echo "Analyzing multiple batches: $(BATCH_DIRS)"
+	./analyze-batch $(BATCH_DIRS)
+
+# Analyze multiple batches with JSON output
+analyze-multi-batch-json: build-analyzer
+	@if [ -z "$(BATCH_DIRS)" ]; then \
+		echo "Usage: make analyze-multi-batch-json BATCH_DIRS=\"batch1/ batch2/ batch3/\""; \
+		exit 1; \
+	fi
+	@echo "Analyzing multiple batches: $(BATCH_DIRS) (JSON output)"
+	./analyze-batch --format json $(BATCH_DIRS)
+
 # Help target with comprehensive information
 help:
 	@echo "╔══════════════════════════════════════════════════════════════════════════════╗"
@@ -108,6 +126,8 @@ help:
 	@echo "  build-analyzer     - Build the batch analysis tool"
 	@echo "  analyze-batch      - Analyze specific batch (use BATCH_DIR=)"
 	@echo "  analyze-batch-json - Analyze batch with JSON output (use BATCH_DIR=)"
+	@echo "  analyze-multi-batch - Analyze multiple batches (use BATCH_DIRS=)"
+	@echo "  analyze-multi-batch-json - Analyze multiple batches with JSON (use BATCH_DIRS=)"
 	@echo "  help               - Show this help message"
 	@echo ""
 	@echo "🚀 USAGE EXAMPLES:"
@@ -141,4 +161,4 @@ help:
 	@echo "  • Structured JSON request/response logging"
 
 # Phony targets
-.PHONY: build clean run run-test run-model list-tests test-all-models test-models test-all-models-case test-dry-run build-analyzer analyze-batch analyze-batch-json help
+.PHONY: build clean run run-test run-model list-tests test-all-models test-models test-all-models-case test-dry-run build-analyzer analyze-batch analyze-batch-json analyze-multi-batch analyze-multi-batch-json help

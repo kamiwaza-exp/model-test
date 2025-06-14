@@ -17,7 +17,7 @@ make run
 make run MODEL="ai/llama3.2"
 
 # Run single test case
-make run-test TEST_CASE="simple_view_cart" MODEL="ai/gemma3"
+make run TEST_CASE="simple_view_cart" MODEL="ai/gemma3"
 ```
 
 ## Command Line Usage
@@ -66,11 +66,21 @@ export OPENAI_MODEL="gpt-4"
 ### Basic Commands
 
 ```bash
-make run                                    # Run with default model (gpt-4o-mini)
+# Run commands
+make run                                    # Run with default values
 make run MODEL="gpt-4"                     # Run with specific model
-make run MODEL="ai/llama3.2"              # Run with local model
-make run-test TEST_CASE="simple_view_cart" # Run single test case
-make help                                   # Show all available commands
+make run TEST_CASE="simple_view_cart"      # Run specific test case
+make run MODEL="gpt-4" TEST_CASE="cart"    # Run with multiple parameters
+
+# Test commands
+make test                                  # Test all models
+make test MODELS="gpt-4,claude-3"          # Test specific models
+make test TEST_CASE="simple_view_cart"     # Test specific case
+make test MODELS="gpt-4" TEST_CASE="cart"  # Test specific model and case
+
+# Utility commands
+make list-tests                            # List available test cases
+make help                                  # Show all available commands
 ```
 
 ### Development Commands
@@ -78,13 +88,6 @@ make help                                   # Show all available commands
 ```bash
 make build          # Build the application
 make clean          # Clean build artifacts and results
-```
-
-### Utility Commands
-
-```bash
-make list-tests     # List available test cases
-make show-results   # Show recent test results
 ```
 
 ## Test Cases
@@ -185,16 +188,16 @@ Total Tests: 18
 1. Add test case to `config/test_cases.json`
 2. Define expected tool call variants
 3. Optionally specify initial cart state
-4. Run with `make run-test TEST_CASE="your_test_name"`
+4. Run with `make run TEST_CASE="your_test_name"`
 
 ### Model Comparison
 
 ```bash
 # Test multiple models
+make test MODELS="gpt-4,gpt-4o-mini,ai/llama3.2"
+
+# Or test them individually
 make run MODEL="gpt-4"
 make run MODEL="gpt-4o-mini"
 make run MODEL="ai/llama3.2"
-
-# Compare results
-make show-results
 ```

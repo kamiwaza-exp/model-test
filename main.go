@@ -25,28 +25,6 @@ func main() {
 	)
 	flag.Parse()
 
-	// Get API key from flag or environment
-	if *apiKey == "" {
-		*apiKey = os.Getenv("OPENAI_API_KEY")
-	}
-	if *apiKey == "" {
-		*apiKey = "DMR"
-	}
-
-	// Get base URL from flag or environment
-	if *baseURL == "" {
-		*baseURL = os.Getenv("OPENAI_BASE_URL")
-	}
-	if *baseURL == "" {
-		*baseURL = "http://localhost:12434/engines/v1"
-	}
-
-	// Get model from flag or environment
-	if *model == "" {
-		*model = os.Getenv("OPENAI_MODEL")
-	}
-	// Default model will be set in the service if empty
-
 	// Load test cases
 	testCases, err := loadTestCases(*configFile, *testCase)
 	if err != nil {

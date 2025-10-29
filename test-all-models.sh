@@ -21,6 +21,9 @@ get_provider_config() {
         "anthropic")
             echo "base_url:https://api.anthropic.com/v1,api_key:${ANTHROPIC_API_KEY:-},api_endpoint:"
             ;;
+        "kamiwaza")
+            echo "base_url:${KAMIWAZA_BASE_URL:-https://localhost},api_key:kamiwaza,api_endpoint:${KAMIWAZA_BASE_URL:-https://localhost}/api/serving/deployments"
+            ;;
         *)
             echo ""
             ;;
@@ -28,7 +31,7 @@ get_provider_config() {
 }
 
 get_available_providers() {
-    echo "ollama dmr openai anthropic"
+    echo "ollama dmr openai anthropic kamiwaza"
 }
 
 
@@ -99,10 +102,13 @@ OPTIONS:
 
 ENVIRONMENT VARIABLES:
     BASE_URL               API base URL
-    API_KEY                API key  
+    API_KEY                API key
     CONFIG_FILE            Test cases config file
     TEST_RUNS              Number of test runs per model (default: 10)
     DOCKER_MODEL_CMD       Custom command to get models (default: $DEFAULT_DOCKER_CMD)
+    KAMIWAZA_BASE_URL      Kamiwaza base URL (default: https://localhost)
+    KAMIWAZA_USERNAME      Kamiwaza username (default: admin)
+    KAMIWAZA_PASSWORD      Kamiwaza password (default: kamiwaza)
 
 EXAMPLES:
     $0                                          # Test all discovered models (10 runs each)
@@ -122,6 +128,7 @@ AVAILABLE PROVIDERS:
     dmr         - DMR instance (http://localhost:13434/engines/v1)
     openai      - OpenAI API (requires OPENAI_API_KEY environment variable)
     anthropic   - Anthropic API (requires ANTHROPIC_API_KEY environment variable)
+    kamiwaza    - Kamiwaza local instance (https://localhost, set KAMIWAZA_BASE_URL to override)
 
 OUTPUT:
     Results are saved to: results/batch_test_YYYYMMDD_HHMMSS/
@@ -215,15 +222,15 @@ parse_provider_config() {
 discover_models_from_provider() {
     local provider="$1"
     local config_result=$(parse_provider_config "$provider" 2>/dev/null)
-    
+
     if [[ $? -ne 0 ]]; then
         return 1
     fi
-    
+
     local base_url=$(echo "$config_result" | cut -d'|' -f1)
     local api_key=$(echo "$config_result" | cut -d'|' -f2)
     local api_endpoint=$(echo "$config_result" | cut -d'|' -f3)
-    
+
     if [[ "$DRY_RUN" == "true" ]]; then
         # Return mock models based on provider
         case "$provider" in
@@ -231,13 +238,14 @@ discover_models_from_provider() {
             "dmr") echo "gpt-4,gpt-3.5-turbo" ;;
             "openai") echo "gpt-4o,gpt-4o-mini" ;;
             "anthropic") echo "claude-3-5-sonnet-20241022,claude-3-haiku-20240307" ;;
+            "kamiwaza") echo "GLM-4.5-Air-GGUF,Qwen3-Coder-30B-A3B-Instruct-GGUF" ;;
             *) echo "mock-model-1,mock-model-2" ;;
         esac
         return
     fi
-    
+
     local models=""
-    
+
     # Handle different provider types
     case "$provider" in
         "ollama"|"dmr")
@@ -256,8 +264,35 @@ discover_models_from_provider() {
         "anthropic")
             models="claude-3-5-sonnet-20241022,claude-3-haiku-20240307,claude-3-opus-20240229"
             ;;
+        "kamiwaza")
+            if [[ -n "$api_endpoint" ]] && command -v curl >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
+                # First, authenticate to get a token
+                local auth_url="${base_url}/api/auth/token"
+                local username="${KAMIWAZA_USERNAME:-admin}"
+                local password="${KAMIWAZA_PASSWORD:-kamiwaza}"
+
+                # Get access token
+                local token_response=$(curl -s -k -X POST "$auth_url" \
+                    -H "Content-Type: application/x-www-form-urlencoded" \
+                    -d "grant_type=password&username=$username&password=$password&scope=&client_id=string&client_secret=********" \
+                    2>/dev/null)
+
+                if [[ $? -eq 0 && -n "$token_response" ]]; then
+                    local access_token=$(echo "$token_response" | jq -r '.access_token' 2>/dev/null)
+
+                    if [[ -n "$access_token" && "$access_token" != "null" ]]; then
+                        # Fetch Kamiwaza deployments with authentication
+                        local json_response=$(curl -s -k -H "Authorization: Bearer $access_token" "$api_endpoint" 2>/dev/null)
+                        if [[ $? -eq 0 && -n "$json_response" ]]; then
+                            # Get unique m_name values from deployments with status="DEPLOYED"
+                            models=$(echo "$json_response" | jq -r '.[] | select(.status=="DEPLOYED") | .m_name' 2>/dev/null | sort -u | tr '\n' ',' | sed 's/,$//')
+                        fi
+                    fi
+                fi
+            fi
+            ;;
     esac
-    
+
     # Use fallback if discovery failed
     if [[ -z "$models" ]]; then
         case "$provider" in
@@ -265,10 +300,11 @@ discover_models_from_provider() {
             "dmr") models="gpt-4,gpt-3.5-turbo" ;;
             "openai") models="gpt-4o,gpt-4o-mini,gpt-4,gpt-3.5-turbo" ;;
             "anthropic") models="claude-3-5-sonnet-20241022,claude-3-haiku-20240307,claude-3-opus-20240229" ;;
+            "kamiwaza") models="GLM-4.5-Air-GGUF,Qwen3-Coder-30B-A3B-Instruct-GGUF" ;;
             *) models="fallback-model" ;;
         esac
     fi
-    
+
     echo "$models"
 }
 
@@ -403,8 +439,23 @@ run_model_test() {
     fi
     
     # Prepare test command
-    local test_cmd="./model-test --model=\"$model\" --config=\"$CONFIG_FILE\" --base-url=\"$test_base_url\" --api-key=\"$test_api_key\""
-    
+    local test_cmd=""
+
+    # Check if this is a Kamiwaza model
+    if [[ -n "$PROVIDERS_OVERRIDE" ]] && [[ "$PROVIDERS_OVERRIDE" == *"kamiwaza"* ]]; then
+        local model_provider=$(get_model_provider "$model")
+        if [[ "$model_provider" == "kamiwaza" ]]; then
+            # Use Kamiwaza-specific flags
+            test_cmd="./model-test --provider=kamiwaza --kamiwaza-model=\"$model\" --kamiwaza-url=\"$test_base_url\" --config=\"$CONFIG_FILE\" --api-key=\"$test_api_key\""
+        else
+            # Standard command for non-Kamiwaza models
+            test_cmd="./model-test --model=\"$model\" --config=\"$CONFIG_FILE\" --base-url=\"$test_base_url\" --api-key=\"$test_api_key\""
+        fi
+    else
+        # Standard command
+        test_cmd="./model-test --model=\"$model\" --config=\"$CONFIG_FILE\" --base-url=\"$test_base_url\" --api-key=\"$test_api_key\""
+    fi
+
     if [[ -n "$TEST_CASE" ]]; then
         test_cmd="$test_cmd --test-case=\"$TEST_CASE\""
     fi

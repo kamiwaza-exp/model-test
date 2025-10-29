@@ -51,7 +51,37 @@ make run TEST_CASE="simple_view_cart" MODEL="ai/gemma3"
         Model to use (or set OPENAI_MODEL env var, defaults to gpt-4o-mini)
   -test-case string
         Run only the specified test case by name
+  -provider string
+        Provider type: default, kamiwaza (default "default")
+  -kamiwaza-url string
+        Kamiwaza base URL for deployment discovery (default "https://localhost")
+  -kamiwaza-model string
+        Kamiwaza model name to look up (uses m_name from deployments)
 ```
+
+### Kamiwaza Provider
+
+Kamiwaza is supported as a provider with automatic deployment discovery:
+
+```bash
+# Run with Kamiwaza model
+./model-test --provider kamiwaza --kamiwaza-model "GLM-4.5-Air-GGUF"
+
+# Or using Make
+make run PROVIDER=kamiwaza KAMIWAZA_MODEL="GLM-4.5-Air-GGUF"
+
+# Run specific test case
+make run PROVIDER=kamiwaza KAMIWAZA_MODEL="Qwen3-Coder-30B-A3B-Instruct-GGUF" TEST_CASE="simple_view_cart"
+
+# Batch test all deployed Kamiwaza models
+./test-all-models.sh -p kamiwaza
+```
+
+The Kamiwaza provider automatically:
+- Queries the `/api/serving/deployments` endpoint
+- Finds the deployment for the specified model name (m_name)
+- Extracts the lb_port and constructs the endpoint URL
+- Uses the model identifier "model" for API requests
 
 ### Environment Variables
 

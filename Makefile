@@ -6,6 +6,9 @@ BASE_URL ?= http://localhost:13434
 API_KEY ?= DMR
 TEST_CASE ?=
 MODELS ?= all
+PROVIDER ?= default
+KAMIWAZA_URL ?= https://localhost
+KAMIWAZA_MODEL ?=
 
 # Default target
 .DEFAULT_GOAL := help
@@ -27,14 +30,27 @@ clean:
 
 # Run the application with all parameters
 run: build
-	@echo "Running with model: $(MODEL)"
-	@echo "Base URL: $(BASE_URL)"
-	@echo "Test case: $(TEST_CASE)"
-	./$(BINARY_NAME) \
-		--model="$(MODEL)" \
-		--base-url="$(BASE_URL)" \
-		--api-key="$(API_KEY)" \
-		--test-case="$(TEST_CASE)"
+	@echo "Running with provider: $(PROVIDER)"
+	@if [ "$(PROVIDER)" = "kamiwaza" ]; then \
+		echo "Kamiwaza model: $(KAMIWAZA_MODEL)"; \
+		echo "Kamiwaza URL: $(KAMIWAZA_URL)"; \
+		echo "Test case: $(TEST_CASE)"; \
+		./$(BINARY_NAME) \
+			--provider=kamiwaza \
+			--kamiwaza-model="$(KAMIWAZA_MODEL)" \
+			--kamiwaza-url="$(KAMIWAZA_URL)" \
+			--api-key="$(API_KEY)" \
+			--test-case="$(TEST_CASE)"; \
+	else \
+		echo "Model: $(MODEL)"; \
+		echo "Base URL: $(BASE_URL)"; \
+		echo "Test case: $(TEST_CASE)"; \
+		./$(BINARY_NAME) \
+			--model="$(MODEL)" \
+			--base-url="$(BASE_URL)" \
+			--api-key="$(API_KEY)" \
+			--test-case="$(TEST_CASE)"; \
+	fi
 
 # Run tests against models
 test: build
@@ -117,21 +133,30 @@ help:
 	@echo "  help               - Show this help message"
 	@echo ""
 	@echo "🚀 USAGE EXAMPLES:"
+	@echo "  # Standard providers:"
 	@echo "  make run                                    # Run with default values"
 	@echo "  make run MODEL=\"gpt-4\"                    # Run with specific model"
 	@echo "  make run TEST_CASE=\"simple_view_cart\"     # Run specific test case"
 	@echo "  make run MODEL=\"gpt-4\" TEST_CASE=\"cart\" # Run with multiple parameters"
 	@echo ""
+	@echo "  # Kamiwaza provider:"
+	@echo "  make run PROVIDER=kamiwaza KAMIWAZA_MODEL=\"GLM-4.5-Air-GGUF\""
+	@echo "  make run PROVIDER=kamiwaza KAMIWAZA_MODEL=\"Qwen3-Coder-30B-A3B-Instruct-GGUF\" TEST_CASE=\"simple_view_cart\""
+	@echo ""
+	@echo "  # Batch testing:"
 	@echo "  make test                                  # Test all models"
 	@echo "  make test MODELS=\"gpt-4,claude-3\"         # Test specific models"
 	@echo "  make test TEST_CASE=\"simple_view_cart\"    # Test specific case"
 	@echo ""
 	@echo "🔧 CONFIGURATION:"
-	@echo "  MODEL              - Model to use (default: gpt-4o-mini)"
-	@echo "  MODELS             - Models to test (default: all)"
+	@echo "  PROVIDER           - Provider type: default, kamiwaza (default: default)"
+	@echo "  MODEL              - Model to use for default provider (default: gpt-4o-mini)"
+	@echo "  MODELS             - Models to test in batch mode (default: all)"
 	@echo "  BASE_URL           - API base URL (default: http://localhost:13434)"
 	@echo "  API_KEY            - API key (default: DMR)"
 	@echo "  TEST_CASE          - Specific test case to run (default: all)"
+	@echo "  KAMIWAZA_URL       - Kamiwaza base URL (default: https://localhost)"
+	@echo "  KAMIWAZA_MODEL     - Kamiwaza model name (m_name from deployments)"
 	@echo ""
 	@echo "📁 OUTPUT:"
 	@echo "  Results: results/agent_test_results_<model>_<timestamp>.json"

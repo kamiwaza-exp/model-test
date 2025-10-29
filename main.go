@@ -17,11 +17,14 @@ import (
 func main() {
 	// Command line flags
 	var (
-		apiKey     = flag.String("api-key", "DMR", "OpenAI API key (or set OPENAI_API_KEY env var)")
-		baseURL    = flag.String("base-url", "http://localhost:12434/engines/v1", "OpenAI API base URL (or set OPENAI_BASE_URL env var)")
-		model      = flag.String("model", "", "Model to use (or set OPENAI_MODEL env var, defaults to gpt-4o-mini)")
-		configFile = flag.String("config", "config/test_cases.json", "Path to test cases configuration file")
-		testCase   = flag.String("test-case", "", "Run only the specified test case by name")
+		apiKey       = flag.String("api-key", "DMR", "OpenAI API key (or set OPENAI_API_KEY env var)")
+		baseURL      = flag.String("base-url", "http://localhost:12434/engines/v1", "OpenAI API base URL (or set OPENAI_BASE_URL env var)")
+		model        = flag.String("model", "", "Model to use (or set OPENAI_MODEL env var, defaults to gpt-4o-mini)")
+		configFile   = flag.String("config", "config/test_cases.json", "Path to test cases configuration file")
+		testCase     = flag.String("test-case", "", "Run only the specified test case by name")
+		provider     = flag.String("provider", "default", "Provider type: default, kamiwaza")
+		kamiwazaURL  = flag.String("kamiwaza-url", "https://localhost", "Kamiwaza base URL for deployment discovery")
+		kamiwazaModel = flag.String("kamiwaza-model", "", "Kamiwaza model name to look up (uses m_name from deployments)")
 	)
 	flag.Parse()
 
@@ -31,8 +34,38 @@ func main() {
 		log.Fatalf("Failed to load test cases: %v", err)
 	}
 
+	// Resolve Kamiwaza configuration if needed
+	finalBaseURL := *baseURL
+	finalModel := *model
+
+	if *provider == "kamiwaza" {
+		if *kamiwazaModel == "" {
+			log.Fatalf("Kamiwaza model name (-kamiwaza-model) is required when using -provider=kamiwaza")
+		}
+
+		kamiwazaSvc := services.NewKamiwazaService(*kamiwazaURL)
+
+		// Get the deployment endpoint for the specified model
+		endpoint, err := kamiwazaSvc.GetModelEndpoint(*kamiwazaModel)
+		if err != nil {
+			log.Fatalf("Failed to get Kamiwaza endpoint for model '%s': %v", *kamiwazaModel, err)
+		}
+
+		finalBaseURL = endpoint + "/v1"
+		finalModel = kamiwazaSvc.GetModelIdentifier()
+
+		fmt.Printf("🔍 Kamiwaza Discovery:\n")
+		fmt.Printf("   Model Name: %s\n", *kamiwazaModel)
+		fmt.Printf("   Endpoint: %s\n", finalBaseURL)
+		fmt.Println()
+	}
+
 	// Generate output filenames with model name
-	sanitizedModel := sanitizeModelName(*model)
+	modelNameForFile := *model
+	if *provider == "kamiwaza" {
+		modelNameForFile = *kamiwazaModel
+	}
+	sanitizedModel := sanitizeModelName(modelNameForFile)
 	timestamp := time.Now().Format("20060102_150405")
 	outputFile := fmt.Sprintf("results/agent_test_results_%s_%s.json", sanitizedModel, timestamp)
 	logFile := fmt.Sprintf("logs/agent_test_logs_%s_%s.log", sanitizedModel, timestamp)
@@ -53,17 +86,22 @@ func main() {
 	defer logger.Close()
 
 	// Create test runner with logger
-	runner := services.NewTestRunnerWithLogger(*apiKey, *baseURL, *model, logger)
+	runner := services.NewTestRunnerWithLogger(*apiKey, finalBaseURL, finalModel, logger)
 
 	// Print test configuration
 	fmt.Printf("🚀 Starting Agent Loop Tool Efficiency Test\n")
 	fmt.Printf("📊 Configuration:\n")
-	fmt.Printf("   Base URL: %s\n", *baseURL)
-	modelName := *model
+	fmt.Printf("   Provider: %s\n", *provider)
+	fmt.Printf("   Base URL: %s\n", finalBaseURL)
+	modelName := finalModel
 	if modelName == "" {
 		modelName = "gpt-4o-mini (default)"
 	}
-	fmt.Printf("   Model: %s\n", modelName)
+	if *provider == "kamiwaza" {
+		fmt.Printf("   Model: %s (API: %s)\n", *kamiwazaModel, modelName)
+	} else {
+		fmt.Printf("   Model: %s\n", modelName)
+	}
 	if *testCase != "" {
 		fmt.Printf("   Single Test Case: %s\n", *testCase)
 	}

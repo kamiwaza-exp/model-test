@@ -3,9 +3,12 @@ package services
 import (
 	"context"
 	"crypto/rand"
+	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"strings"
 	"time"
 
 	"model-test/models"
@@ -32,6 +35,16 @@ func NewOpenAIServiceWithLogger(apiKey, baseURL, defaultModel string, logger *Re
 	options := []option.RequestOption{
 		option.WithBaseURL(baseURL),
 		option.WithAPIKey(apiKey),
+	}
+
+	// Disable SSL verification for localhost HTTPS connections (Kamiwaza, etc.)
+	if strings.HasPrefix(baseURL, "https://localhost") || strings.Contains(baseURL, "https://127.0.0.1") {
+		httpClient := &http.Client{
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+			},
+		}
+		options = append(options, option.WithHTTPClient(httpClient))
 	}
 
 	client := openai.NewClient(options...)

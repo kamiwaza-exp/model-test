@@ -3,15 +3,20 @@
 A Go application for testing AI models with function calling using an agent loop architecture. Tests tool calling
 efficiency, cart management scenarios, and provides detailed performance metrics.
 
+Supports multiple providers: Kamiwaza, Ollama, Docker Model Runner (DMR), OpenAI, and Anthropic.
+
 ## Quick Start
 
 ```bash
 # Clone and setup
-git clone https://github.com/ilopezluna/model-test
+git clone https://github.com/kamiwaza-exp/model-test.git
 cd model-test
 
 # Run with default model
 make run
+
+# Run with Kamiwaza (auto-discovers deployed models)
+make run PROVIDER=kamiwaza KAMIWAZA_MODEL="Qwen3-Coder-30B-A3B-Instruct-GGUF"
 
 # Run with specific model
 make run MODEL="ai/llama3.2"
@@ -61,27 +66,99 @@ make run TEST_CASE="simple_view_cart" MODEL="ai/gemma3"
 
 ### Kamiwaza Provider
 
-Kamiwaza is supported as a provider with automatic deployment discovery:
+**What is Kamiwaza?**
+
+Kamiwaza is a local AI model deployment platform that allows you to run and manage multiple LLM models on your own infrastructure. This integration enables automated testing and benchmarking of your locally deployed Kamiwaza models using OpenAI-compatible tool calling.
+
+**What does this test for Kamiwaza users?**
+
+This framework tests your Kamiwaza-deployed models' ability to:
+- **Function Calling Accuracy**: Can the model correctly identify when to use tools vs. respond directly?
+- **Tool Selection**: Does it choose the right tool for the task?
+- **Multi-Step Reasoning**: Can it chain multiple tool calls together in complex workflows?
+- **Shopping Cart Logic**: Handles stateful operations like cart management across multiple interactions
+- **Performance Metrics**: Measures response times, accuracy rates, and request counts
+
+**Perfect for:**
+- Evaluating different models before production deployment
+- Comparing models side-by-side (GLM-4.5-Air vs Qwen3-Coder, etc.)
+- Regression testing after model updates or configuration changes
+- Benchmarking tool calling performance across your model fleet
+
+**Usage:**
 
 ```bash
-# Run with Kamiwaza model
-./model-test --provider kamiwaza --kamiwaza-model "GLM-4.5-Air-GGUF"
-
-# Or using Make
+# Test a specific deployed model
 make run PROVIDER=kamiwaza KAMIWAZA_MODEL="GLM-4.5-Air-GGUF"
+
+# Or using the binary directly
+./model-test --provider kamiwaza --kamiwaza-model "GLM-4.5-Air-GGUF"
 
 # Run specific test case
 make run PROVIDER=kamiwaza KAMIWAZA_MODEL="Qwen3-Coder-30B-A3B-Instruct-GGUF" TEST_CASE="simple_view_cart"
 
-# Batch test all deployed Kamiwaza models
+# Batch test ALL deployed Kamiwaza models (auto-discovery)
 ./test-all-models.sh -p kamiwaza
+
+# Batch test with specific number of runs
+./test-all-models.sh -p kamiwaza -r 5
+
+# Test specific case across all deployed models
+./test-all-models.sh -p kamiwaza -t "simple_add_iphone"
+
+# Compare Kamiwaza models with other providers
+./test-all-models.sh -p "kamiwaza,ollama,dmr"
 ```
 
+**How it works:**
+
 The Kamiwaza provider automatically:
-- Queries the `/api/serving/deployments` endpoint
-- Finds the deployment for the specified model name (m_name)
-- Extracts the lb_port and constructs the endpoint URL
-- Uses the model identifier "model" for API requests
+1. **Authenticates** using OAuth2 (default: admin/kamiwaza credentials)
+2. **Discovers** models by querying `/api/serving/deployments` endpoint
+3. **Filters** for only models with `status="DEPLOYED"`
+4. **Resolves** endpoint URLs using each deployment's `lb_port`
+5. **Constructs** the correct OpenAI-compatible endpoint: `https://localhost:{lb_port}/v1`
+6. **Tests** using standard OpenAI function calling format
+
+**Configuration:**
+
+```bash
+# Custom Kamiwaza instance
+export KAMIWAZA_BASE_URL="https://my-kamiwaza-server.local"
+export KAMIWAZA_USERNAME="admin"
+export KAMIWAZA_PASSWORD="your-password"
+
+# Then run tests
+make run PROVIDER=kamiwaza KAMIWAZA_MODEL="your-model-name"
+```
+
+**Requirements:**
+- Kamiwaza instance running locally or on your network
+- Models deployed with `status="DEPLOYED"`
+- Models must support OpenAI-compatible tool calling format
+- Network access to Kamiwaza API endpoints
+
+**Output Example:**
+
+```
+🔍 Kamiwaza Discovery:
+   Model Name: Qwen3-Coder-30B-A3B-Instruct-GGUF
+   Endpoint: https://localhost:61119/v1
+
+📊 Configuration:
+   Provider: kamiwaza
+   Model: Qwen3-Coder-30B-A3B-Instruct-GGUF (API: model)
+   Test Cases: 18
+
+📈 Agent Test Results
+==================================================
+Total Tests: 18
+✅ Passed: 16
+❌ Failed: 2
+⏱️  Total LLM Time: 24.5s
+⏱️  Average Time per Request: 1.2s
+📊 Overall Success Rate: 88.89%
+```
 
 ### Environment Variables
 
